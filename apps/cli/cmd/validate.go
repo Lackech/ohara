@@ -130,7 +130,13 @@ func validateRepo(hubRoot string, repo RepoEntry) (int, int) {
 
 	// Check individual docs for frontmatter
 	filepath.Walk(repoDocsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			if strings.HasPrefix(info.Name(), ".") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 

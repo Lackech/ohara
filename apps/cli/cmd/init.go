@@ -81,6 +81,26 @@ or keep it local for your agents to read.`,
 		os.WriteFile(filepath.Join(hubDir, "README.md"), []byte(readme), 0644)
 		fmt.Printf("✓ Created %s/README.md\n", hubName)
 
+		// Create CLAUDE.md for agent discovery
+		claudeMd := "# " + name + " — Documentation Hub\n\n" +
+			"This is a Diataxis-structured documentation hub managed by Ohara.\n\n" +
+			"## For Agents\n\n" +
+			"- Read `llms.txt` for a quick index of all documentation\n" +
+			"- Read `llms-full.txt` for complete documentation content\n" +
+			"- Read `AGENTS.md` for detailed instructions on using and contributing to docs\n" +
+			"- Each subdirectory is a tracked service/repo with `tutorials/`, `guides/`, `reference/`, `explanation/`\n\n" +
+			"## Working with Docs\n\n" +
+			"- To find docs: look in `<service-name>/<diataxis-type>/`\n" +
+			"- To update docs: edit the markdown files, then create a PR\n" +
+			"- To generate docs from code: `ohara generate <service-name>`\n" +
+			"- To rebuild agent artifacts: `ohara build`\n" +
+			"- To check coverage: `ohara validate`\n\n" +
+			"## PR Workflow\n\n" +
+			"When updating documentation, always use a branch and PR:\n\n" +
+			"```bash\ngit checkout -b docs/update-description\ngit add -A\ngit commit -m \"docs: description\"\ngit push origin docs/update-description\ngh pr create --title \"docs: description\"\n```\n"
+		os.WriteFile(filepath.Join(hubDir, "CLAUDE.md"), []byte(claudeMd), 0644)
+		fmt.Printf("✓ Created %s/CLAUDE.md\n", hubName)
+
 		// Initialize git repo
 		gitInit := exec.Command("git", "init")
 		gitInit.Dir = hubDir

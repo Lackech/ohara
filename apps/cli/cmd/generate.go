@@ -168,12 +168,21 @@ Examples:
 		}
 		fmt.Printf("  ✓ Saved LLM prompts to %s/.ohara-prompts/\n", repoName)
 
+		// Auto-build llms.txt and AGENTS.md
+		fmt.Printf("\n")
+		buildLlmsTxt(hubRoot, config)
+		buildLlmsFullTxt(hubRoot, config)
+		buildAgentsMd(hubRoot, config)
+
 		fmt.Printf("\nNext steps:\n")
 		fmt.Printf("  1. Ask your AI agent to fill the docs:\n")
-		fmt.Printf("     \"Read %s/.ohara-prompts/ and the code in %s,\n", repoName, codePath)
-		fmt.Printf("      then write real documentation for each file in %s/\"\n", repoName)
-		fmt.Printf("  2. Review and commit:\n")
+		fmt.Printf("     \"Read the prompts in %s/.ohara-prompts/ and the source code\n", repoName)
+		fmt.Printf("      in %s, then write the documentation files in %s/\"\n", codePath, repoName)
+		fmt.Printf("  2. Review, commit, and PR:\n")
+		fmt.Printf("     git checkout -b docs/add-%s\n", repoName)
 		fmt.Printf("     git add -A && git commit -m \"docs: add %s documentation\"\n", repoName)
+		fmt.Printf("     git push origin docs/add-%s\n", repoName)
+		fmt.Printf("     gh pr create --title \"docs: add %s documentation\"\n", repoName)
 		fmt.Printf("  3. Validate: ohara validate\n")
 
 		return nil
@@ -359,17 +368,52 @@ func analyzeLocally(dir string, types []string, minConf float64) (*AnalyzeRespon
 	result.Data.Analysis.Summary = fmt.Sprintf("Project \"%s\" (%s) with %d files",
 		result.Data.Analysis.ProjectName, result.Data.Analysis.Language, result.Data.Analysis.FileCount)
 
-	// Build plan
+	// Read key files for prompt context
+	keyFiles := map[string]string{}
+	for _, name := range []string{"README.md", "package.json", ".env.example", "Dockerfile", "docker-compose.yml"} {
+		if data, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
+			keyFiles[name] = string(data)
+		}
+	}
+	// Read CI config
+	if entries, err := os.ReadDir(filepath.Join(dir, ".github", "workflows")); err == nil {
+		for _, e := range entries {
+			if data, err := os.ReadFile(filepath.Join(dir, ".github", "workflows", e.Name())); err == nil {
+				keyFiles[".github/workflows/"+e.Name()] = string(data)
+			}
+		}
+	}
+
+	// Collect file tree (top 40)
+	var fileTree []string
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			base := filepath.Base(path)
+			if base == "node_modules" || base == ".git" || base == "dist" || strings.HasPrefix(base, ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, _ := filepath.Rel(dir, path)
+		if len(fileTree) < 40 {
+			fileTree = append(fileTree, rel)
+		}
+		return nil
+	})
+
+	// Build plan with prompts
 	docs := []DocPlan{}
 	dirMap := map[string]string{"tutorial": "tutorials", "guide": "guides", "reference": "reference", "explanation": "explanation"}
 	for _, s := range filtered {
 		outline := getDocOutline(s.DocName)
+		prompt := buildDocPrompt(s, result.Data.Analysis.ProjectName, result.Data.Analysis.Language, result.Data.Analysis.Framework, keyFiles, fileTree)
 		docs = append(docs, DocPlan{
 			Path:         dirMap[s.Type] + "/" + s.DocName + ".md",
 			Title:        s.Title,
 			DiataxisType: s.Type,
 			Confidence:   s.Confidence,
 			Outline:      outline,
+			Prompt:       prompt,
 		})
 	}
 
@@ -377,6 +421,75 @@ func analyzeLocally(dir string, types []string, minConf float64) (*AnalyzeRespon
 	result.Data.Plan.TotalDocs = len(docs)
 
 	return result, nil
+}
+
+func buildDocPrompt(signal Signal, projectName, language string, framework *string, keyFiles map[string]string, fileTree []string) string {
+	typeGuidance := map[string]string{
+		"tutorial":    "Write a learning-oriented tutorial. Walk the reader through a complete experience step by step. Use a friendly tone. Every step should produce a visible result.",
+		"guide":       "Write a task-oriented how-to guide. Be concise and practical. Start with the goal, list prerequisites, then provide step-by-step instructions.",
+		"reference":   "Write precise, information-oriented reference documentation. Be exhaustive and accurate. Use tables for parameters/options. No tutorials — just facts.",
+		"explanation": "Write an understanding-oriented explanation. Discuss the 'why' behind design decisions. Help the reader build a mental model.",
+	}
+
+	stack := language
+	if framework != nil {
+		stack += "/" + *framework
+	}
+
+	// Build context section with key file contents
+	contextBlock := ""
+	contextFiles := []string{"README.md", "package.json", ".env.example", "Dockerfile"}
+	if signal.Type == "guide" && signal.DocName == "ci-cd" {
+		contextFiles = append(contextFiles, ".github/workflows/")
+	}
+	for name, content := range keyFiles {
+		for _, cf := range contextFiles {
+			if strings.HasPrefix(name, cf) || name == cf {
+				trimmed := content
+				if len(trimmed) > 2000 {
+					trimmed = trimmed[:2000] + "\n... (truncated)"
+				}
+				contextBlock += fmt.Sprintf("\n### File: %s\n```\n%s\n```\n", name, trimmed)
+				break
+			}
+		}
+	}
+
+	fileTreeStr := strings.Join(fileTree, "\n")
+
+	return fmt.Sprintf(`You are generating documentation for the project "%s" (%s).
+
+%s
+
+Generate a complete markdown document with this structure:
+
+---
+title: %s
+description: [write a one-line description]
+diataxis_type: %s
+---
+
+# %s
+
+%s
+
+IMPORTANT INSTRUCTIONS:
+- Read the actual source code files in the repository to write specific, accurate documentation
+- Extract real values (port numbers, script names, env vars, endpoints) from the code
+- Cross-reference other docs in the project where relevant
+- Do NOT write generic placeholders — everything should be based on real code
+- Keep it concise — developers scan, they don't read novels
+
+Project context:
+%s
+File tree:
+%s
+`, projectName, stack,
+		typeGuidance[signal.Type],
+		signal.Title, signal.Type, signal.Title,
+		strings.Join(signal.Context, ", "),
+		contextBlock,
+		fileTreeStr)
 }
 
 func getDocOutline(name string) []string {
