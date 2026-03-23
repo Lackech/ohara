@@ -1,0 +1,3 @@
+{
+  "extends": "@ohara/config/tsconfig.base.json"
+}

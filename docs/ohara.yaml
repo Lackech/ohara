@@ -1,0 +1,12 @@
+name: ohara-project
+docs_dir: "."
+
+directories:
+  tutorials: tutorials
+  guides: guides
+  reference: reference
+  explanation: explanation
+
+include:
+  - "**/*.md"
+  - "**/*.mdx"
