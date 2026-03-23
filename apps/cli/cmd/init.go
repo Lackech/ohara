@@ -81,44 +81,42 @@ or keep it local for your agents to read.`,
 		os.WriteFile(filepath.Join(hubDir, "README.md"), []byte(readme), 0644)
 		fmt.Printf("✓ Created %s/README.md\n", hubName)
 
-		// Create CLAUDE.md for agent discovery
-		claudeMd := "# " + name + " — Documentation Hub\n\n" +
-			"This is a Diataxis-structured documentation hub managed by Ohara.\n\n" +
+		// Create CLAUDE.md in the WORKSPACE root (parent), not inside hub
+		// This is where the developer opens Claude Code
+		claudeMd := "# " + name + " — Workspace\n\n" +
+			"Documentation hub is in `" + hubName + "/`. Managed by Ohara.\n\n" +
 			"## Agent Commands\n\n" +
-			"Use these slash commands (defined in `.claude/commands/`):\n\n" +
+			"Use these slash commands:\n\n" +
 			"- `/search-docs <query>` — Search across all documentation\n" +
 			"- `/generate-docs <service>` — Generate docs from a service's source code\n" +
 			"- `/validate-docs` — Check documentation structure and coverage\n" +
 			"- `/create-docs-pr <description>` — Create a PR with doc changes\n" +
 			"- `/docs-changelog [service]` — Show recent documentation changes\n\n" +
 			"## Quick Reference\n\n" +
-			"- `llms.txt` — Index of all docs (read this first)\n" +
-			"- `llms-full.txt` — Full content of all docs\n" +
-			"- `AGENTS.md` — Detailed agent instructions + PR workflow\n" +
-			"- Each subdirectory = a tracked service with `tutorials/`, `guides/`, `reference/`, `explanation/`\n\n" +
+			"- `" + hubName + "/llms.txt` — Index of all docs (read this first)\n" +
+			"- `" + hubName + "/llms-full.txt` — Full content of all docs\n" +
+			"- `" + hubName + "/AGENTS.md` — Detailed agent instructions\n\n" +
 			"## Diataxis Types\n\n" +
 			"| Need | Look in | Type |\n" +
 			"|------|---------|------|\n" +
-			"| Execute a task | `guides/` | How-to Guide |\n" +
-			"| Learn a system | `tutorials/` | Tutorial |\n" +
-			"| Look up a param | `reference/` | Reference |\n" +
-			"| Understand why | `explanation/` | Explanation |\n"
-		os.WriteFile(filepath.Join(hubDir, "CLAUDE.md"), []byte(claudeMd), 0644)
-		fmt.Printf("✓ Created %s/CLAUDE.md\n", hubName)
+			"| Execute a task | `<service>/guides/` | How-to Guide |\n" +
+			"| Learn a system | `<service>/tutorials/` | Tutorial |\n" +
+			"| Look up a param | `<service>/reference/` | Reference |\n" +
+			"| Understand why | `<service>/explanation/` | Explanation |\n"
+		os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(claudeMd), 0644)
+		fmt.Printf("✓ Created CLAUDE.md (workspace root)\n")
 
-		// Create Claude Code commands (.claude/commands/)
-		claudeCmdsDir := filepath.Join(hubDir, ".claude", "commands")
+		// Create Claude Code commands in WORKSPACE root
+		claudeCmdsDir := filepath.Join(workDir, ".claude", "commands")
 		os.MkdirAll(claudeCmdsDir, 0755)
 
 		// Search command
 		os.WriteFile(filepath.Join(claudeCmdsDir, "search-docs.md"), []byte(
 			"Search the documentation hub for information.\n\n"+
-				"Read `llms.txt` for a quick index, then search through the relevant\n"+
-				"service directories. Use grep across the markdown files to find specific topics.\n\n"+
 				"Arguments: $ARGUMENTS (the search query)\n\n"+
 				"Steps:\n"+
-				"1. Read llms.txt to understand the doc structure\n"+
-				"2. Grep across all .md files for the query: `grep -ri \"$ARGUMENTS\" --include=\"*.md\" -l`\n"+
+				"1. Read `"+hubName+"/llms.txt` to understand the doc structure\n"+
+				"2. Grep across all docs: `grep -ri \"$ARGUMENTS\" "+hubName+"/ --include=\"*.md\" -l`\n"+
 				"3. Read the most relevant files\n"+
 				"4. Summarize findings with links to the source files\n",
 		), 0644)
@@ -128,24 +126,26 @@ or keep it local for your agents to read.`,
 			"Generate documentation for a tracked repository.\n\n"+
 				"Arguments: $ARGUMENTS (the repo name, e.g., 'my-api')\n\n"+
 				"Steps:\n"+
-				"1. Run `ohara generate $ARGUMENTS` to scaffold docs and create prompts\n"+
-				"2. Read the prompts in `$ARGUMENTS/.ohara-prompts/`\n"+
-				"3. For each prompt, read the referenced source code files\n"+
-				"4. Write real, specific documentation based on the actual code\n"+
-				"5. Write each doc to the corresponding path in `$ARGUMENTS/`\n"+
-				"6. Run `ohara validate` to check the result\n"+
-				"7. Run `ohara build` to regenerate llms.txt\n",
+				"1. Run `cd "+hubName+" && ohara generate $ARGUMENTS`\n"+
+				"2. Read the prompts in `"+hubName+"/$ARGUMENTS/.ohara-prompts/`\n"+
+				"3. For EACH prompt file:\n"+
+				"   a. Read the prompt to understand what doc to write\n"+
+				"   b. Read the relevant source code from `$ARGUMENTS/` (the actual code repo)\n"+
+				"   c. Write real, specific documentation based on the actual code\n"+
+				"   d. Save to the corresponding path in `"+hubName+"/$ARGUMENTS/`\n"+
+				"4. Run `cd "+hubName+" && ohara build` to regenerate llms.txt\n"+
+				"5. Run `cd "+hubName+" && ohara validate` to check the result\n",
 		), 0644)
 
 		// Validate command
 		os.WriteFile(filepath.Join(claudeCmdsDir, "validate-docs.md"), []byte(
 			"Validate the documentation hub structure and coverage.\n\n"+
 				"Steps:\n"+
-				"1. Run `ohara validate`\n"+
+				"1. Run `cd "+hubName+" && ohara validate`\n"+
 				"2. Review the output for errors and warnings\n"+
-				"3. For each TODO placeholder warning, read the corresponding prompt\n"+
-				"   in `.ohara-prompts/` and generate the content\n"+
-				"4. For missing Diataxis types, suggest what docs should be created\n",
+				"3. For each TODO placeholder, read the prompt in `.ohara-prompts/`\n"+
+				"   and the source code, then generate real content\n"+
+				"4. For missing Diataxis types, suggest what docs to create\n",
 		), 0644)
 
 		// PR command
@@ -153,14 +153,15 @@ or keep it local for your agents to read.`,
 			"Create a PR with documentation changes.\n\n"+
 				"Arguments: $ARGUMENTS (description of the changes)\n\n"+
 				"Steps:\n"+
-				"1. Run `ohara build` to regenerate llms.txt and AGENTS.md\n"+
-				"2. Run `ohara validate` to check for issues\n"+
-				"3. Create a branch: `git checkout -b docs/$ARGUMENTS`\n"+
-				"4. Stage changes: `git add -A`\n"+
-				"5. Commit: `git commit -m \"docs: $ARGUMENTS\"`\n"+
-				"6. Push: `git push origin docs/$ARGUMENTS`\n"+
-				"7. Create PR: `gh pr create --title \"docs: $ARGUMENTS\" --body \"Auto-generated documentation update\"`\n"+
-				"8. Report the PR URL\n",
+				"1. `cd "+hubName+"`\n"+
+				"2. Run `ohara build` to regenerate llms.txt and AGENTS.md\n"+
+				"3. Run `ohara validate` to check for issues\n"+
+				"4. `git checkout -b docs/$ARGUMENTS`\n"+
+				"5. `git add -A`\n"+
+				"6. `git commit -m \"docs: $ARGUMENTS\"`\n"+
+				"7. `git push origin docs/$ARGUMENTS`\n"+
+				"8. `gh pr create --title \"docs: $ARGUMENTS\" --body \"Documentation update\"`\n"+
+				"9. Report the PR URL\n",
 		), 0644)
 
 		// Changelog command
@@ -168,16 +169,17 @@ or keep it local for your agents to read.`,
 			"Show recent documentation changes.\n\n"+
 				"Arguments: $ARGUMENTS (optional: service name to filter)\n\n"+
 				"Steps:\n"+
-				"1. If a service name is provided:\n"+
+				"1. `cd "+hubName+"`\n"+
+				"2. If a service name is provided:\n"+
 				"   `git log --oneline -20 -- $ARGUMENTS/`\n"+
-				"2. Otherwise show all recent changes:\n"+
+				"3. Otherwise show all recent changes:\n"+
 				"   `git log --oneline -20`\n"+
-				"3. For important changes, show the full diff:\n"+
+				"4. For important changes, show the diff:\n"+
 				"   `git show <commit-hash> --stat`\n"+
-				"4. Summarize what changed, when, and why\n",
+				"5. Summarize what changed, when, and why\n",
 		), 0644)
 
-		fmt.Printf("✓ Created %s/.claude/commands/ (5 agent skills)\n", hubName)
+		fmt.Printf("✓ Created .claude/commands/ (5 agent skills)\n")
 
 		// Initialize git repo
 		gitInit := exec.Command("git", "init")
