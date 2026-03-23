@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -75,11 +74,6 @@ var searchCmd = &cobra.Command{
 
 		project, _ := cmd.Flags().GetString("project")
 		if project == "" {
-			// Try to detect from ohara.yaml
-			if findConfig(".") == "" {
-				return fmt.Errorf("--project flag required (or run from a directory with ohara.yaml)")
-			}
-			fmt.Fprintln(os.Stderr, "Note: project detection from ohara.yaml not yet implemented. Use --project flag.")
 			return fmt.Errorf("--project flag required")
 		}
 
