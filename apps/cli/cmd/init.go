@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -84,19 +85,22 @@ or keep it local for your agents to read.`,
 		// Create CLAUDE.md in the WORKSPACE root (parent), not inside hub
 		// This is where the developer opens Claude Code
 		claudeMd := "# " + name + " — Workspace\n\n" +
-			"Documentation hub is in `" + hubName + "/`. Managed by Ohara.\n\n" +
-			"## Agent Commands\n\n" +
-			"Use these slash commands:\n\n" +
-			"- `/search-docs <query>` — Search across all documentation\n" +
-			"- `/generate-docs <service>` — Generate docs from a service's source code\n" +
-			"- `/validate-docs` — Check documentation structure and coverage\n" +
-			"- `/create-docs-pr <description>` — Create a PR with doc changes\n" +
-			"- `/docs-changelog [service]` — Show recent documentation changes\n\n" +
+			"Documentation hub is in `" + hubName + "/`. Managed by [Ohara](https://github.com/Lackech/ohara).\n\n" +
+			"## Skills\n\n" +
+			"Ohara skills (auto-invoked or via slash command):\n\n" +
+			"- `/search-docs <query>` — Search all docs (auto-invoked when relevant)\n" +
+			"- `/generate-docs <service>` — Generate docs from source code (manual)\n" +
+			"- `/validate-docs` — Check coverage and quality (auto-invoked)\n" +
+			"- `/create-docs-pr <description>` — Create a PR with changes (manual)\n" +
+			"- `/docs-changelog [service]` — Recent doc changes (auto-invoked)\n\n" +
+			"## MCP Tools\n\n" +
+			"The Ohara MCP server provides programmatic tools:\n" +
+			"`search_docs`, `list_docs`, `read_doc`, `write_doc`, `validate`, `create_pr`, `changelog`\n\n" +
 			"## Quick Reference\n\n" +
-			"- `" + hubName + "/llms.txt` — Index of all docs (read this first)\n" +
-			"- `" + hubName + "/llms-full.txt` — Full content of all docs\n" +
-			"- `" + hubName + "/AGENTS.md` — Detailed agent instructions\n\n" +
-			"## Diataxis Types\n\n" +
+			"- `" + hubName + "/llms.txt` — Index of all docs\n" +
+			"- `" + hubName + "/llms-full.txt` — Full doc content\n" +
+			"- `" + hubName + "/AGENTS.md` — Agent instructions\n\n" +
+			"## Diataxis\n\n" +
 			"| Need | Look in | Type |\n" +
 			"|------|---------|------|\n" +
 			"| Execute a task | `<service>/guides/` | How-to Guide |\n" +
@@ -106,80 +110,26 @@ or keep it local for your agents to read.`,
 		os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(claudeMd), 0644)
 		fmt.Printf("✓ Created CLAUDE.md (workspace root)\n")
 
-		// Create Claude Code commands in WORKSPACE root
-		claudeCmdsDir := filepath.Join(workDir, ".claude", "commands")
-		os.MkdirAll(claudeCmdsDir, 0755)
+		// Create Claude Code skills (.claude/skills/) in workspace root
+		createOharaSkills(workDir, hubName)
+		fmt.Printf("✓ Created .claude/skills/ (5 Ohara skills)\n")
 
-		// Search command
-		os.WriteFile(filepath.Join(claudeCmdsDir, "search-docs.md"), []byte(
-			"Search the documentation hub for information.\n\n"+
-				"Arguments: $ARGUMENTS (the search query)\n\n"+
-				"Steps:\n"+
-				"1. Read `"+hubName+"/llms.txt` to understand the doc structure\n"+
-				"2. Grep across all docs: `grep -ri \"$ARGUMENTS\" "+hubName+"/ --include=\"*.md\" -l`\n"+
-				"3. Read the most relevant files\n"+
-				"4. Summarize findings with links to the source files\n",
-		), 0644)
+		// Create MCP server configuration
+		mcpConfigDir := filepath.Join(workDir, ".claude")
+		os.MkdirAll(mcpConfigDir, 0755)
 
-		// Generate docs command
-		os.WriteFile(filepath.Join(claudeCmdsDir, "generate-docs.md"), []byte(
-			"Generate documentation for a tracked repository.\n\n"+
-				"Arguments: $ARGUMENTS (the repo name, e.g., 'my-api')\n\n"+
-				"Steps:\n"+
-				"1. Run `cd "+hubName+" && ohara generate $ARGUMENTS`\n"+
-				"2. Read the prompts in `"+hubName+"/$ARGUMENTS/.ohara-prompts/`\n"+
-				"3. For EACH prompt file:\n"+
-				"   a. Read the prompt to understand what doc to write\n"+
-				"   b. Read the relevant source code from `$ARGUMENTS/` (the actual code repo)\n"+
-				"   c. Write real, specific documentation based on the actual code\n"+
-				"   d. Save to the corresponding path in `"+hubName+"/$ARGUMENTS/`\n"+
-				"4. Run `cd "+hubName+" && ohara build` to regenerate llms.txt\n"+
-				"5. Run `cd "+hubName+" && ohara validate` to check the result\n",
-		), 0644)
-
-		// Validate command
-		os.WriteFile(filepath.Join(claudeCmdsDir, "validate-docs.md"), []byte(
-			"Validate the documentation hub structure and coverage.\n\n"+
-				"Steps:\n"+
-				"1. Run `cd "+hubName+" && ohara validate`\n"+
-				"2. Review the output for errors and warnings\n"+
-				"3. For each TODO placeholder, read the prompt in `.ohara-prompts/`\n"+
-				"   and the source code, then generate real content\n"+
-				"4. For missing Diataxis types, suggest what docs to create\n",
-		), 0644)
-
-		// PR command
-		os.WriteFile(filepath.Join(claudeCmdsDir, "create-docs-pr.md"), []byte(
-			"Create a PR with documentation changes.\n\n"+
-				"Arguments: $ARGUMENTS (description of the changes)\n\n"+
-				"Steps:\n"+
-				"1. `cd "+hubName+"`\n"+
-				"2. Run `ohara build` to regenerate llms.txt and AGENTS.md\n"+
-				"3. Run `ohara validate` to check for issues\n"+
-				"4. `git checkout -b docs/$ARGUMENTS`\n"+
-				"5. `git add -A`\n"+
-				"6. `git commit -m \"docs: $ARGUMENTS\"`\n"+
-				"7. `git push origin docs/$ARGUMENTS`\n"+
-				"8. `gh pr create --title \"docs: $ARGUMENTS\" --body \"Documentation update\"`\n"+
-				"9. Report the PR URL\n",
-		), 0644)
-
-		// Changelog command
-		os.WriteFile(filepath.Join(claudeCmdsDir, "docs-changelog.md"), []byte(
-			"Show recent documentation changes.\n\n"+
-				"Arguments: $ARGUMENTS (optional: service name to filter)\n\n"+
-				"Steps:\n"+
-				"1. `cd "+hubName+"`\n"+
-				"2. If a service name is provided:\n"+
-				"   `git log --oneline -20 -- $ARGUMENTS/`\n"+
-				"3. Otherwise show all recent changes:\n"+
-				"   `git log --oneline -20`\n"+
-				"4. For important changes, show the diff:\n"+
-				"   `git show <commit-hash> --stat`\n"+
-				"5. Summarize what changed, when, and why\n",
-		), 0644)
-
-		fmt.Printf("✓ Created .claude/commands/ (5 agent skills)\n")
+		mcpConfig := map[string]interface{}{
+			"mcpServers": map[string]interface{}{
+				"ohara": map[string]interface{}{
+					"command": "ohara",
+					"args":    []string{"serve"},
+					"cwd":     hubDir,
+				},
+			},
+		}
+		mcpData, _ := json.MarshalIndent(mcpConfig, "", "  ")
+		os.WriteFile(filepath.Join(mcpConfigDir, "settings.json"), mcpData, 0644)
+		fmt.Printf("✓ Created .claude/settings.json (MCP server: ohara serve)\n")
 
 		// Initialize git repo
 		gitInit := exec.Command("git", "init")
