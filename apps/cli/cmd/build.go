@@ -81,10 +81,14 @@ func buildLlmsTxt(hubRoot string, config *HubConfig) error {
 				title := extractTitle(doc.path)
 				relPath, _ := filepath.Rel(hubRoot, doc.path)
 				desc := extractDescription(doc.path)
+				stub := ""
+				if isStubDoc(doc.path) {
+					stub = " *(incomplete — needs content)*"
+				}
 				if desc != "" {
-					lines = append(lines, fmt.Sprintf("- [%s](%s): %s", title, relPath, desc))
+					lines = append(lines, fmt.Sprintf("- [%s](%s): %s%s", title, relPath, desc, stub))
 				} else {
-					lines = append(lines, fmt.Sprintf("- [%s](%s)", title, relPath))
+					lines = append(lines, fmt.Sprintf("- [%s](%s)%s", title, relPath, stub))
 				}
 			}
 			lines = append(lines, "")
@@ -122,6 +126,7 @@ func buildLlmsFullTxt(hubRoot string, config *HubConfig) error {
 		lines = append(lines, fmt.Sprintf("## %s", repo.Name))
 		lines = append(lines, "")
 
+		skipped := 0
 		for _, dDir := range []string{"tutorials", "guides", "reference", "explanation"} {
 			typeDir := filepath.Join(repoDir, dDir)
 			docs := collectMarkdownFiles(typeDir)
@@ -129,10 +134,23 @@ func buildLlmsFullTxt(hubRoot string, config *HubConfig) error {
 				continue
 			}
 
+			var completeDocs []mdFile
+			for _, doc := range docs {
+				if isStubDoc(doc.path) {
+					skipped++
+					continue
+				}
+				completeDocs = append(completeDocs, doc)
+			}
+
+			if len(completeDocs) == 0 {
+				continue
+			}
+
 			lines = append(lines, fmt.Sprintf("### %s", diataxisLabels[dDir]))
 			lines = append(lines, "")
 
-			for _, doc := range docs {
+			for _, doc := range completeDocs {
 				title := extractTitle(doc.path)
 				lines = append(lines, fmt.Sprintf("#### %s", title))
 				lines = append(lines, "")
@@ -150,6 +168,9 @@ func buildLlmsFullTxt(hubRoot string, config *HubConfig) error {
 				lines = append(lines, "---")
 				lines = append(lines, "")
 			}
+		}
+		if skipped > 0 {
+			fmt.Printf("  ⊘ Skipped %d incomplete docs (still have TODO placeholders)\n", skipped)
 		}
 	}
 
@@ -301,6 +322,25 @@ func extractDescription(path string) string {
 		}
 	}
 	return ""
+}
+
+// isStubDoc returns true if a doc is still a TODO scaffold (not yet filled by an agent/human)
+func isStubDoc(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	text := string(data)
+	// Strip frontmatter
+	if strings.HasPrefix(text, "---") {
+		if idx := strings.Index(text[3:], "---"); idx >= 0 {
+			text = strings.TrimSpace(text[idx+6:])
+		}
+	}
+	// A stub has many TODOs relative to content, or is very short
+	todoCount := strings.Count(text, "TODO")
+	wordCount := len(strings.Fields(text))
+	return todoCount >= 2 || (wordCount < 30 && todoCount >= 1)
 }
 
 func init() {
