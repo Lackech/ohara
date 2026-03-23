@@ -84,21 +84,22 @@ or keep it local for your agents to read.`,
 
 		// Create CLAUDE.md in the WORKSPACE root (parent), not inside hub
 		// This is where the developer opens Claude Code
-		claudeMd := "# " + name + " — Workspace\n\n" +
-			"Documentation hub is in `" + hubName + "/`. Managed by [Ohara](https://github.com/Lackech/ohara).\n\n" +
+		claudeMd := "# " + name + "\n\n" +
+			"Documentation hub: `" + hubName + "/`. Managed by [Ohara](https://github.com/Lackech/ohara).\n\n" +
+			"## Agents\n\n" +
+			"Three specialized subagents (in `.claude/agents/`):\n\n" +
+			"- **ohara-writer** — Reads code, writes Diataxis docs. Has persistent memory and MCP tools. Use for doc generation.\n" +
+			"- **ohara-reviewer** — Reviews docs against code for accuracy. Finds stale/inaccurate content.\n" +
+			"- **ohara-researcher** — Searches docs to answer questions. Auto-invoked when you ask about services.\n\n" +
 			"## Skills\n\n" +
-			"Ohara skills (auto-invoked or via slash command):\n\n" +
-			"- `/search-docs <query>` — Search all docs (auto-invoked when relevant)\n" +
-			"- `/generate-docs <service>` — Generate docs from source code (manual)\n" +
-			"- `/validate-docs` — Check coverage and quality (auto-invoked)\n" +
-			"- `/create-docs-pr <description>` — Create a PR with changes (manual)\n" +
-			"- `/docs-changelog [service]` — Recent doc changes (auto-invoked)\n\n" +
+			"- `/validate-docs` — Quick structure check (auto-invoked)\n" +
+			"- `/create-docs-pr <desc>` — Branch, commit, push, open PR\n" +
+			"- `/docs-changelog [service]` — Recent changes from git log\n\n" +
 			"## MCP Tools\n\n" +
-			"The Ohara MCP server provides programmatic tools:\n" +
-			"`search_docs`, `list_docs`, `read_doc`, `write_doc`, `validate`, `create_pr`, `changelog`\n\n" +
+			"The `ohara serve` MCP server provides: `search_docs`, `list_docs`, `read_doc`, `write_doc`, `validate`, `create_pr`, `changelog`\n\n" +
 			"## Quick Reference\n\n" +
 			"- `" + hubName + "/llms.txt` — Index of all docs\n" +
-			"- `" + hubName + "/llms-full.txt` — Full doc content\n" +
+			"- `" + hubName + "/llms-full.txt` — Full doc content (completed docs only)\n" +
 			"- `" + hubName + "/AGENTS.md` — Agent instructions\n\n" +
 			"## Diataxis\n\n" +
 			"| Need | Look in | Type |\n" +
@@ -110,9 +111,8 @@ or keep it local for your agents to read.`,
 		os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(claudeMd), 0644)
 		fmt.Printf("✓ Created CLAUDE.md (workspace root)\n")
 
-		// Create Claude Code skills (.claude/skills/) in workspace root
-		createOharaSkills(workDir, hubName)
-		fmt.Printf("✓ Created .claude/skills/ (5 Ohara skills)\n")
+		// Create subagents + skills
+		createOharaAgentConfig(workDir, hubName)
 
 		// Create MCP server configuration
 		mcpConfigDir := filepath.Join(workDir, ".claude")
