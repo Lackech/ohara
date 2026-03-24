@@ -174,16 +174,21 @@ Examples:
 		buildLlmsFullTxt(hubRoot, config)
 		buildAgentsMd(hubRoot, config)
 
-		fmt.Printf("\nNext steps:\n")
-		fmt.Printf("  1. Ask your AI agent to fill the docs:\n")
-		fmt.Printf("     \"Read the prompts in %s/.ohara-prompts/ and the source code\n", repoName)
-		fmt.Printf("      in %s, then write the documentation files in %s/\"\n", codePath, repoName)
-		fmt.Printf("  2. Review, commit, and PR:\n")
-		fmt.Printf("     git checkout -b docs/add-%s\n", repoName)
-		fmt.Printf("     git add -A && git commit -m \"docs: add %s documentation\"\n", repoName)
-		fmt.Printf("     git push origin docs/add-%s\n", repoName)
-		fmt.Printf("     gh pr create --title \"docs: add %s documentation\"\n", repoName)
-		fmt.Printf("  3. Validate: ohara validate\n")
+		// Get hub dir name for display
+		hubDirName := filepath.Base(hubRoot)
+
+		fmt.Printf("\nNext: Open Claude Code in your workspace and paste this prompt:\n")
+		fmt.Printf("┌─────────────────────────────────────────────────────────────────────┐\n")
+		fmt.Printf("│                                                                     │\n")
+		fmt.Printf("│  Use the ohara-writer agent to document %s.                         \n", repoName)
+		fmt.Printf("│  Read the prompts in %s/%s/.ohara-prompts/ and the source           \n", hubDirName, repoName)
+		fmt.Printf("│  code in %s/. Write complete Diataxis documentation based on        \n", repoName)
+		fmt.Printf("│  the actual code, then validate and create a PR.                    │\n")
+		fmt.Printf("│                                                                     │\n")
+		fmt.Printf("└─────────────────────────────────────────────────────────────────────┘\n")
+		fmt.Printf("\nOr run individual steps manually:\n")
+		fmt.Printf("  ohara validate          Check coverage\n")
+		fmt.Printf("  /create-docs-pr %s     Create a PR\n", repoName)
 
 		return nil
 	},
