@@ -87,19 +87,22 @@ or keep it local for your agents to read.`,
 		claudeMd := "# " + name + "\n\n" +
 			"Documentation hub: `" + hubName + "/`. Managed by [Ohara](https://github.com/Lackech/ohara).\n\n" +
 			"## Agents\n\n" +
-			"Three specialized subagents (in `.claude/agents/`):\n\n" +
-			"- **ohara-writer** — Reads code, writes Diataxis docs. Has persistent memory and MCP tools. Use for doc generation.\n" +
-			"- **ohara-reviewer** — Reviews docs against code for accuracy. Finds stale/inaccurate content.\n" +
-			"- **ohara-researcher** — Searches docs to answer questions. Auto-invoked when you ask about services.\n\n" +
+			"Four specialized subagents (in `.claude/agents/`):\n\n" +
+			"- **ohara-writer** — Reads code, writes Diataxis docs. Persistent memory + MCP tools.\n" +
+			"- **ohara-reviewer** — Reviews docs against code for accuracy.\n" +
+			"- **ohara-researcher** — Searches docs to answer questions. Auto-invoked.\n" +
+			"- **ohara-watcher** — Detects code changes that make docs stale. Auto-invoked after git pull.\n\n" +
 			"## Skills\n\n" +
-			"- `/validate-docs` — Quick structure check (auto-invoked)\n" +
+			"- `/validate-docs` — Check structure and coverage (auto-invoked)\n" +
+			"- `/check-staleness [service]` — Compare code changes vs docs (auto-invoked after git pull)\n" +
+			"- `/post-merge` — Check docs after PR merge (auto-invoked)\n" +
 			"- `/create-docs-pr <desc>` — Branch, commit, push, open PR\n" +
 			"- `/docs-changelog [service]` — Recent changes from git log\n\n" +
 			"## MCP Tools\n\n" +
-			"The `ohara serve` MCP server provides: `search_docs`, `list_docs`, `read_doc`, `write_doc`, `validate`, `create_pr`, `changelog`\n\n" +
+			"`ohara serve` provides: `search_docs`, `list_docs`, `read_doc`, `write_doc`, `validate`, `create_pr`, `changelog`\n\n" +
 			"## Quick Reference\n\n" +
-			"- `" + hubName + "/llms.txt` — Index of all docs\n" +
-			"- `" + hubName + "/llms-full.txt` — Full doc content (completed docs only)\n" +
+			"- `" + hubName + "/llms.txt` — Doc index\n" +
+			"- `" + hubName + "/llms-full.txt` — Full content (completed only)\n" +
 			"- `" + hubName + "/AGENTS.md` — Agent instructions\n\n" +
 			"## Diataxis\n\n" +
 			"| Need | Look in | Type |\n" +

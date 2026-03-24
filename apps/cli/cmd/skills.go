@@ -155,7 +155,83 @@ If you can't find an answer, say so clearly and suggest creating the missing doc
 Hub location: %s/
 `, hubName, hubName))
 
-	fmt.Printf("✓ Created .claude/agents/ (3 subagents: writer, reviewer, researcher)\n")
+	// 4. ohara-watcher — detects code changes that affect docs
+	writeAgent(agentsDir, "ohara-watcher.md", fmt.Sprintf(`---
+name: ohara-watcher
+description: >-
+  Detects code changes that may require documentation updates. Use proactively
+  after git pull, after merging PRs, or when the user switches branches.
+  Also use when the user says "check if docs need updating".
+model: haiku
+tools: Read, Grep, Glob, Bash
+mcpServers:
+  - ohara
+memory: project
+---
+
+You are Ohara Watcher — you detect when code changes make documentation stale.
+
+## When to run
+
+You should check for staleness:
+- After git pull (new commits from the team)
+- After a PR is merged to main
+- When the user asks "are docs up to date?"
+- Periodically when working in a code repo
+
+## Your workflow
+
+For each tracked service in %s/.ohara.yaml:
+
+1. **Check recent commits** in the code repo:
+   ` + "`" + `cd <service-path> && git log --oneline -10` + "`" + `
+
+2. **Get the diff** of what changed:
+   ` + "`" + `cd <service-path> && git diff HEAD~5 --stat` + "`" + `
+
+   For specific changes:
+   ` + "`" + `cd <service-path> && git diff HEAD~5 --name-only` + "`" + `
+
+3. **Map changes to docs**:
+   - Files matching *route*, *controller*, *handler*, *api* → reference/api-reference.md
+   - .env*, config* files → reference/configuration.md
+   - Dockerfile, docker-compose*, CI configs → guides/deployment.md
+   - package.json scripts changed → guides/development.md
+   - New directories or major restructuring → explanation/architecture.md
+   - README changes → tutorials/getting-started.md
+
+4. **Check if mapped docs exist and are current**:
+   - Read the doc from the hub
+   - Compare against the new code
+   - Flag specific inaccuracies
+
+5. **Report findings** with severity:
+   - 🔴 STALE: Doc says X but code now says Y (inaccurate)
+   - 🟡 MISSING: New code feature not documented
+   - 🟢 OK: Doc matches current code
+
+6. **Save observations** to your memory for pattern tracking
+
+## Output format
+
+` + "```" + `
+Documentation Staleness Report for <service>
+Last checked: <date>
+Commits since last doc update: <count>
+
+🔴 reference/api-reference.md
+   - Missing new POST /payments endpoint (added in commit abc123)
+   - /users endpoint response changed (commit def456)
+
+🟡 reference/configuration.md
+   - New STRIPE_KEY env var not documented
+
+🟢 guides/deployment.md
+   - Up to date
+` + "```" + `
+`, hubName))
+
+	fmt.Printf("✓ Created .claude/agents/ (4 subagents: writer, reviewer, researcher, watcher)\n")
 }
 
 // createLightweightSkills creates .claude/skills/ for quick inline operations
@@ -212,7 +288,51 @@ Otherwise:
 Summarize: what changed, when, and why.
 `, hubName))
 
-	fmt.Printf("✓ Created .claude/skills/ (3 skills: validate, PR, changelog)\n")
+	// check-staleness — quick inline check after git pull or feature work
+	createSkill(skillsDir, "check-staleness", fmt.Sprintf(`---
+name: check-staleness
+description: >-
+  Quick check for documentation staleness after code changes. Use proactively
+  after git pull, after merging a PR, after finishing a feature, or when
+  switching branches. Compares recent commits against existing docs.
+argument-hint: "[service-name]"
+---
+
+Quick staleness check for $ARGUMENTS (or all services if not specified).
+
+For each service, run in the CODE repo (not the docs hub):
+  cd $ARGUMENTS && git log --oneline -5
+  cd $ARGUMENTS && git diff HEAD~5 --name-only
+
+Map changed files to documentation:
+- *route*, *controller*, *handler* → reference/api docs
+- .env*, config* → reference/configuration docs
+- Dockerfile, CI → guides/deployment docs
+- package.json → guides/development docs
+
+Check if the mapped docs in %s/ mention the changed code.
+Report what needs updating.
+`, hubName))
+
+	// post-merge — reminder to check docs after PR merge
+	createSkill(skillsDir, "post-merge", fmt.Sprintf(`---
+name: post-merge
+description: >-
+  After a PR is merged to main, check if documentation needs updating.
+  Use proactively after git pull on main, after merging a PR, or when
+  the user says they just merged something.
+---
+
+A PR was just merged. Check if docs need updating:
+
+1. cd to each tracked service directory (from %s/.ohara.yaml)
+2. Run: git log --oneline -5 to see recent merges
+3. Run: git diff HEAD~3 --name-only to see what changed
+4. Compare against existing docs in %s/
+5. If updates needed, suggest: "Use the ohara-writer to update the docs, then /create-docs-pr"
+`, hubName, hubName))
+
+	fmt.Printf("✓ Created .claude/skills/ (5 skills: validate, PR, changelog, staleness, post-merge)\n")
 }
 
 func writeAgent(dir, filename, content string) {
