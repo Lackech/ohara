@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -41,6 +42,9 @@ Also generates AGENTS.md with instructions for AI agents.`,
 		if err := buildAgentsMd(hubRoot, config); err != nil {
 			return fmt.Errorf("failed to build AGENTS.md: %w", err)
 		}
+
+		// Build changelogs from code repo git/PR history
+		buildChangelogs(hubRoot, config)
 
 		return nil
 	},
@@ -322,6 +326,58 @@ func extractDescription(path string) string {
 		}
 	}
 	return ""
+}
+
+// buildChangelogs generates CHANGELOG.md for each tracked service from its code repo history
+func buildChangelogs(hubRoot string, config *HubConfig) {
+	for _, repo := range config.Repos {
+		codePath := ResolveRepoPath(hubRoot, repo)
+		if codePath == "" || !dirExists(codePath) {
+			continue
+		}
+
+		var lines []string
+		lines = append(lines, fmt.Sprintf("# %s — Changelog", repo.Name))
+		lines = append(lines, "")
+		lines = append(lines, "> Auto-generated from git history. Updated by `ohara build`.")
+		lines = append(lines, "")
+
+		// Try gh pr list first (richer info)
+		prCmd := exec.Command("gh", "pr", "list", "--state", "merged", "--limit", "30",
+			"--json", "number,title,author,mergedAt,labels,body",
+			"--jq", `.[] | "### PR #\(.number): \(.title)\n- **Author:** \(.author.login)\n- **Merged:** \(.mergedAt)\n- **Labels:** \(.labels | map(.name) | join(", "))\n\n\(.body | split("\n") | .[0:3] | join("\n"))\n\n---\n"`)
+		prCmd.Dir = codePath
+		prOutput, prErr := prCmd.Output()
+
+		if prErr == nil && len(prOutput) > 10 {
+			lines = append(lines, "## Merged Pull Requests")
+			lines = append(lines, "")
+			lines = append(lines, string(prOutput))
+		} else {
+			// Fallback to git log with more detail
+			gitCmd := exec.Command("git", "log", "--oneline", "--no-merges", "-30",
+				"--format=- **%h** %s (%an, %ar)")
+			gitCmd.Dir = codePath
+			gitOutput, gitErr := gitCmd.Output()
+
+			if gitErr == nil && len(gitOutput) > 0 {
+				lines = append(lines, "## Recent Commits")
+				lines = append(lines, "")
+				lines = append(lines, string(gitOutput))
+			} else {
+				lines = append(lines, "*No git history available.*")
+			}
+		}
+
+		content := strings.Join(lines, "\n")
+		outPath := filepath.Join(hubRoot, repo.Name, "CHANGELOG.md")
+		os.MkdirAll(filepath.Join(hubRoot, repo.Name), 0755)
+		if err := os.WriteFile(outPath, []byte(content), 0644); err != nil {
+			fmt.Printf("  ✗ %s/CHANGELOG.md: %v\n", repo.Name, err)
+			continue
+		}
+		fmt.Printf("✓ Generated %s/CHANGELOG.md\n", repo.Name)
+	}
 }
 
 // isStubDoc returns true if a doc is still a TODO scaffold (not yet filled by an agent/human)

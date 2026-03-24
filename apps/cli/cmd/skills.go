@@ -152,6 +152,11 @@ Always cite your sources:
 
 If you can't find an answer, say so clearly and suggest creating the missing doc.
 
+## Changelog
+
+Each service has a CHANGELOG.md with PR history and recent commits. Read it to
+understand how a service evolved, what changed recently, and who contributed.
+
 Hub location: %s/
 `, hubName, hubName))
 
