@@ -70,6 +70,32 @@ diataxis_type: guide
 - Include code examples from the actual codebase
 - Cross-reference other docs in the hub
 - Keep it concise — developers scan, not read
+
+## Memory — What to Remember
+
+Before starting, READ your memory directory for past learnings.
+After finishing, UPDATE your memory with new discoveries.
+
+Save to your memory:
+- **Service profiles**: For each service — tech stack, framework, key patterns,
+  entry points, how routes are defined, how config works
+- **Naming conventions**: Variable naming, file naming, directory structure patterns
+- **Architecture patterns**: How services communicate, shared libraries, common patterns
+- **Documentation style**: If the user corrects your writing style, save the preference
+- **Gotchas**: Non-obvious things you discovered (e.g., "auth middleware is in /lib not /middleware")
+- **Cross-service relationships**: Which services depend on each other, shared types
+
+Format each memory as a short note with context:
+` + "```" + `
+## hzn-prices-service
+- Stack: TypeScript/Elysia, Drizzle ORM, PostgreSQL
+- Routes defined in src/routes/*.ts using Elysia plugin pattern
+- Auth: JWT middleware at src/middleware/auth.ts
+- Config: all env vars in src/config.ts with Zod validation
+- Testing: Bun test runner, tests co-located with source files
+` + "```" + `
+
+This compounds: each time you document a service, you get faster and more accurate.
 `, hubName, hubName))
 
 	// 2. ohara-reviewer — reviews doc quality and accuracy
@@ -80,6 +106,7 @@ description: >-
   Compares documentation against actual source code to find inaccuracies, stale content,
   and missing coverage. Use after generating or updating docs.
 model: haiku
+memory: project
 tools: Read, Grep, Glob, Bash
 mcpServers:
   - ohara
@@ -109,6 +136,17 @@ You are Ohara Reviewer — a documentation quality specialist.
 - Dependencies: are documented versions current?
 - Architecture: does the architecture doc match the actual code structure?
 
+## Memory — What to Remember
+
+Before reviewing, READ your memory for known issues and patterns.
+After reviewing, UPDATE your memory.
+
+Save to your memory:
+- **Known inaccuracies**: Issues found and whether they were fixed
+- **Review patterns**: What types of docs go stale fastest
+- **Code-to-doc mapping**: Which code paths are documented where
+- **Quality trends**: Is doc quality improving or degrading over time
+
 Hub location: %s/
 `, hubName))
 
@@ -121,6 +159,7 @@ description: >-
   works, or wants to find specific information. Use proactively for any question about
   the codebase or services.
 model: haiku
+memory: project
 tools: Read, Grep, Glob
 mcpServers:
   - ohara
@@ -151,6 +190,20 @@ Always cite your sources:
 - "The configuration reference at service-name/reference/configuration.md lists..."
 
 If you can't find an answer, say so clearly and suggest creating the missing doc.
+
+## Memory — What to Remember
+
+Before searching, READ your memory for past answers.
+After answering, UPDATE your memory with useful findings.
+
+Save to your memory:
+- **FAQ**: Questions asked more than once and where the answer lives
+- **Knowledge gaps**: Questions you couldn't answer (docs that should exist)
+- **Navigation shortcuts**: Which docs are most useful for which topics
+- **Cross-service knowledge**: How services relate, common integration patterns
+
+This compounds: you build a knowledge map of what's documented, what's missing,
+and what people ask about most.
 
 ## Changelog
 
@@ -215,7 +268,25 @@ For each tracked service in %s/.ohara.yaml:
    - 🟡 MISSING: New code feature not documented
    - 🟢 OK: Doc matches current code
 
-6. **Save observations** to your memory for pattern tracking
+6. **Save observations** to your memory
+
+## Memory — What to Remember
+
+Before checking, READ your memory for past observations.
+After checking, UPDATE your memory with new patterns.
+
+Save to your memory:
+- **File-to-doc mapping**: Which code files affect which docs
+  (e.g., "src/routes/*.ts → reference/api-reference.md")
+- **Change patterns**: What types of commits typically need doc updates
+  (e.g., "commits touching .env.example always need config ref update")
+- **False positives**: Changes that looked significant but didn't affect docs
+  (e.g., "test file changes rarely need doc updates")
+- **Last checked state**: Per service, the last commit hash you checked
+- **Staleness hotspots**: Which docs go stale most often
+
+This compounds: over time you learn which changes matter and which don't,
+reducing noise and catching real issues faster.
 
 ## Output format
 
