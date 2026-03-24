@@ -74,8 +74,22 @@ or keep it local for your agents to read.`,
 		fmt.Printf("✓ Created %s/%s\n", hubName, hubConfigFile)
 
 		// Create .gitignore
-		gitignore := ".ohara-prompts/\n.DS_Store\n"
+		gitignore := ".ohara-prompts/\n.scratch/\n.DS_Store\n"
 		os.WriteFile(filepath.Join(hubDir, ".gitignore"), []byte(gitignore), 0644)
+
+		// Create scratch space for agent coordination
+		os.MkdirAll(filepath.Join(hubDir, ".scratch", "tasks"), 0755)
+		os.MkdirAll(filepath.Join(hubDir, ".scratch", "handoffs"), 0755)
+		os.WriteFile(filepath.Join(hubDir, ".scratch", "README.md"), []byte(
+			"# Agent Scratch Space\n\n"+
+				"Temporary workspace for agent coordination during tasks.\n"+
+				"Gitignored — never committed. Cleaned up after tasks complete.\n\n"+
+				"- `tasks/<task-name>/` — Working space per active task (plan, status, findings)\n"+
+				"- `handoffs/` — Cross-agent context passing between phases\n",
+		), 0644)
+
+		// Create playbooks directory with starters
+		createStarterPlaybooks(hubDir)
 
 		// Create README
 		readme := fmt.Sprintf("# %s — Documentation Hub\n\nManaged by [Ohara](https://github.com/Lackech/ohara). Diataxis-structured documentation for all services.\n\n## Structure\n\nEach directory corresponds to a tracked repository:\n\n```\n%s/\n├── .ohara.yaml          ← hub configuration\n├── <repo-name>/\n│   ├── tutorials/       ← learning-oriented\n│   ├── guides/          ← task-oriented\n│   ├── reference/       ← information-oriented\n│   └── explanation/     ← understanding-oriented\n└── ...\n```\n\n## Usage\n\n```bash\nohara add ../my-repo     # track a repo\nohara generate my-repo   # generate docs from code\nohara validate           # check structure\n```\n", name, hubName)
@@ -86,15 +100,26 @@ or keep it local for your agents to read.`,
 		// This is where the developer opens Claude Code
 		claudeMd := "# " + name + "\n\n" +
 			"Documentation hub: `" + hubName + "/`. Managed by [Ohara](https://github.com/Lackech/ohara).\n\n" +
+			"## Playbooks\n\n" +
+			"Run coordinated agent teams with: `/run-playbook <name> <description>`\n\n" +
+			"| Playbook | Pattern | Use for |\n" +
+			"|----------|---------|--------|\n" +
+			"| `fix-bug` | Sequential | Investigate → implement → test → document |\n" +
+			"| `new-feature` | Phased + parallel | Plan → foundations → parallel implement → docs |\n" +
+			"| `investigate` | Parallel converge | Competing hypotheses → best answer |\n" +
+			"| `review-pr` | Parallel converge | Multi-perspective review → synthesis |\n\n" +
+			"Custom playbooks: add `.md` files to `" + hubName + "/.ohara-playbooks/`\n\n" +
 			"## Agents\n\n" +
-			"Four specialized subagents (in `.claude/agents/`):\n\n" +
-			"- **ohara-writer** — Reads code, writes Diataxis docs. Persistent memory + MCP tools.\n" +
+			"Five subagents (in `.claude/agents/`):\n\n" +
+			"- **ohara-orchestrator** — Executes playbooks. Spawns agent teams. Manages phases.\n" +
+			"- **ohara-writer** — Reads code, writes Diataxis docs. Persistent memory + MCP.\n" +
 			"- **ohara-reviewer** — Reviews docs against code for accuracy.\n" +
 			"- **ohara-researcher** — Searches docs to answer questions. Auto-invoked.\n" +
-			"- **ohara-watcher** — Detects code changes that make docs stale. Auto-invoked after git pull.\n\n" +
+			"- **ohara-watcher** — Detects stale docs after code changes. Background.\n\n" +
 			"## Skills\n\n" +
+			"- `/run-playbook <name> <desc>` — Execute a playbook with agent team\n" +
 			"- `/validate-docs` — Check structure and coverage (auto-invoked)\n" +
-			"- `/check-staleness [service]` — Compare code changes vs docs (auto-invoked after git pull)\n" +
+			"- `/check-staleness [service]` — Compare code changes vs docs (auto-invoked)\n" +
 			"- `/post-merge` — Check docs after PR merge (auto-invoked)\n" +
 			"- `/create-docs-pr <desc>` — Branch, commit, push, open PR\n" +
 			"- `/docs-changelog [service]` — Recent changes from git log\n\n" +

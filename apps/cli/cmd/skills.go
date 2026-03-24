@@ -319,7 +319,82 @@ Commits since last doc update: <count>
 ` + "```" + `
 `, hubName))
 
-	fmt.Printf("✓ Created .claude/agents/ (4 subagents: writer, reviewer, researcher, watcher)\n")
+	// 5. ohara-orchestrator — reads and executes playbooks
+	writeAgent(agentsDir, "ohara-orchestrator.md", fmt.Sprintf(`---
+name: ohara-orchestrator
+description: >-
+  Executes Ohara playbooks — coordinated multi-agent workflows for bug fixes,
+  features, investigations, and reviews. Use when the user says "run playbook",
+  "fix this bug", "build this feature", or "investigate this issue".
+  Reads playbooks from .ohara-playbooks/ and coordinates agent teams.
+model: sonnet
+memory: project
+permissionMode: acceptEdits
+tools: Read, Grep, Glob, Bash, Edit, Write, Agent
+mcpServers:
+  - ohara
+skills:
+  - validate-docs
+maxTurns: 100
+---
+
+You are Ohara Orchestrator — you execute playbooks by coordinating agent teams.
+
+## How Playbooks Work
+
+Playbooks live in %s/.ohara-playbooks/. Each defines:
+- **Phases**: sequential steps or parallel groups
+- **Agents**: which agent type handles each phase
+- **Isolation**: whether to use worktrees for parallel work
+- **Review gates**: where to pause for human approval
+
+## Your Workflow
+
+1. **Read the playbook** from %s/.ohara-playbooks/<name>.md
+2. **Read the task context** from %s/.scratch/tasks/<task-id>/context.md
+3. **Read the hub docs** for relevant service knowledge
+4. **Execute each phase**:
+   - For sequential phases: do them one at a time
+   - For parallel phases: spawn an agent team, one agent per role
+   - For worktree phases: use isolation: worktree for each agent
+5. **Write coordination data** to .scratch/tasks/<task-id>/:
+   - Status updates per phase
+   - Findings and handoffs between phases
+   - Decisions made
+6. **At review gates**: present findings and wait for approval
+7. **After completion**: update docs, run ohara build, create PR
+
+## Spawning Agent Teams
+
+For parallel phases, create a team:
+- Each agent gets the playbook phase instructions as their task
+- Each agent reads from .scratch/ for shared context
+- Each agent writes status to .scratch/
+- Use worktrees for agents that modify code in the same repo
+
+## Cross-Repo Work
+
+When a task spans multiple repos:
+- Read .ohara.yaml for the list of tracked repos and their paths
+- Assign one agent per repo in parallel phases
+- Use .scratch/handoffs/ for cross-agent context
+- Merge order matters: shared types first, then consumers
+
+## File Ownership
+
+CRITICAL: In parallel phases, no two agents edit the same file.
+Write the file ownership map to .scratch/tasks/<task-id>/ownership.md
+before starting parallel work.
+
+## Memory
+
+Save to memory:
+- Which playbooks worked well for which types of tasks
+- Common failure modes and how to avoid them
+- Service-specific patterns that affect playbook execution
+`, hubName, hubName, hubName))
+
+	fmt.Printf("✓ Created .claude/agents/ (5 subagents: writer, reviewer, researcher, watcher, orchestrator)\n")
 }
 
 // createLightweightSkills creates .claude/skills/ for quick inline operations
@@ -420,7 +495,34 @@ A PR was just merged. Check if docs need updating:
 5. If updates needed, suggest: "Use the ohara-writer to update the docs, then /create-docs-pr"
 `, hubName, hubName))
 
-	fmt.Printf("✓ Created .claude/skills/ (5 skills: validate, PR, changelog, staleness, post-merge)\n")
+	// run-playbook — manual skill to execute a playbook
+	createSkill(skillsDir, "run-playbook", fmt.Sprintf(`---
+name: run-playbook
+description: Execute an Ohara playbook to coordinate an agent team for a task.
+argument-hint: <playbook-name> <description>
+disable-model-invocation: true
+---
+
+Execute a playbook.
+
+Arguments: $ARGUMENTS
+First word is the playbook name, rest is the task description.
+
+Steps:
+1. Run: cd %s && ohara run $ARGUMENTS
+2. This creates a task in .scratch/tasks/ with context
+3. Read the playbook at %s/.ohara-playbooks/<playbook-name>.md
+4. Read the task context at the scratch path shown in ohara run output
+5. Use the ohara-orchestrator agent to execute the playbook
+
+Available playbooks:
+- fix-bug: investigate → implement → test → document
+- new-feature: plan → foundations → parallel implement → integrate → document
+- investigate: parallel hypotheses → converge
+- review-pr: parallel multi-perspective review → synthesize
+`, hubName, hubName))
+
+	fmt.Printf("✓ Created .claude/skills/ (6 skills: validate, PR, changelog, staleness, post-merge, run-playbook)\n")
 }
 
 func writeAgent(dir, filename, content string) {
