@@ -126,7 +126,7 @@ or keep it local for your agents to read.`,
 				"ohara": map[string]interface{}{
 					"command": "ohara",
 					"args":    []string{"serve"},
-					"cwd":     hubDir,
+					"cwd":     hubName,
 				},
 			},
 		}

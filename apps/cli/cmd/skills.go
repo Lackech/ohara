@@ -26,8 +26,13 @@ description: >-
   or creating new documentation from code. Use proactively after ohara generate.
 model: sonnet
 memory: project
+permissionMode: acceptEdits
+tools: Read, Grep, Glob, Bash, Edit, Write
 mcpServers:
   - ohara
+skills:
+  - validate-docs
+maxTurns: 50
 ---
 
 You are Ohara Writer — a documentation specialist that reads source code and writes
@@ -110,6 +115,8 @@ memory: project
 tools: Read, Grep, Glob, Bash
 mcpServers:
   - ohara
+disallowedTools: mcp__ohara__write_doc, mcp__ohara__create_pr
+maxTurns: 30
 ---
 
 You are Ohara Reviewer — a documentation quality specialist.
@@ -163,6 +170,8 @@ memory: project
 tools: Read, Grep, Glob
 mcpServers:
   - ohara
+disallowedTools: mcp__ohara__write_doc, mcp__ohara__create_pr
+maxTurns: 20
 ---
 
 You are Ohara Researcher — you answer questions by searching the documentation hub.
@@ -221,10 +230,13 @@ description: >-
   after git pull, after merging PRs, or when the user switches branches.
   Also use when the user says "check if docs need updating".
 model: haiku
+memory: project
+background: true
 tools: Read, Grep, Glob, Bash
 mcpServers:
   - ohara
-memory: project
+disallowedTools: mcp__ohara__write_doc, mcp__ohara__create_pr
+maxTurns: 25
 ---
 
 You are Ohara Watcher — you detect when code changes make documentation stale.
