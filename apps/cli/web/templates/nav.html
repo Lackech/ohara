@@ -1,0 +1,19 @@
+{{range .Services}}
+<div class="mb-4">
+  <a href="/service/{{.Name}}" class="text-sm font-semibold text-gray-300 hover:text-white"
+    hx-get="/service/{{.Name}}" hx-target="#main-content" hx-push-url="true">
+    {{.Name}}
+  </a>
+  {{range .Sections}}
+  <div class="mt-2">
+    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">{{.Label}}</div>
+    {{range .Docs}}
+    <a href="/doc/{{.Path}}" class="block text-sm text-gray-400 hover:text-white py-0.5 pl-2"
+      hx-get="/doc/{{.Path}}" hx-target="#main-content" hx-push-url="true">
+      {{.Title}}
+    </a>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}

@@ -1,0 +1,33 @@
+<h1 class="text-3xl font-bold mb-2">{{.HubName}}</h1>
+<p class="text-gray-400 mb-8">{{.ServiceCount}} services tracked</p>
+
+<div class="grid gap-6 md:grid-cols-2">
+  {{range .Services}}
+  <a href="/service/{{.Name}}" class="block rounded-xl border border-gray-800 p-6 hover:border-gray-600 transition-colors">
+    <h2 class="text-lg font-semibold">{{.Name}}</h2>
+    <div class="mt-3 flex flex-wrap gap-2">
+      {{if .Tutorials}}<span class="px-2 py-0.5 rounded text-xs type-tutorial">{{.Tutorials}} tutorials</span>{{end}}
+      {{if .Guides}}<span class="px-2 py-0.5 rounded text-xs type-guide">{{.Guides}} guides</span>{{end}}
+      {{if .References}}<span class="px-2 py-0.5 rounded text-xs type-reference">{{.References}} reference</span>{{end}}
+      {{if .Explanations}}<span class="px-2 py-0.5 rounded text-xs type-explanation">{{.Explanations}} explanation</span>{{end}}
+      {{if .Stubs}}<span class="px-2 py-0.5 rounded text-xs bg-gray-700 text-gray-400">{{.Stubs}} incomplete</span>{{end}}
+    </div>
+    <div class="mt-3 text-xs text-gray-500">
+      {{.TotalDocs}} docs · {{.CompleteDocs}} complete
+    </div>
+  </a>
+  {{end}}
+</div>
+
+{{if .HasChangelogs}}
+<h2 class="text-xl font-semibold mt-10 mb-4">Recent Activity</h2>
+<div class="space-y-2">
+  {{range .RecentChanges}}
+  <div class="flex items-center gap-3 text-sm">
+    <span class="text-gray-500 font-mono">{{.Hash}}</span>
+    <span>{{.Message}}</span>
+    <span class="text-gray-600">{{.Service}}</span>
+  </div>
+  {{end}}
+</div>
+{{end}}

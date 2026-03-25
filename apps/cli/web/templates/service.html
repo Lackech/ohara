@@ -1,0 +1,34 @@
+<h1 class="text-2xl font-bold mb-2">{{.Name}}</h1>
+<p class="text-gray-400 mb-6">{{.TotalDocs}} documents</p>
+
+{{range .Sections}}
+{{if .Docs}}
+<div class="mb-8">
+  <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+    <span class="px-2 py-0.5 rounded text-xs type-{{.Type}}">{{.Label}}</span>
+    <span class="text-gray-500 text-sm font-normal">{{len .Docs}} docs</span>
+  </h2>
+  <div class="space-y-2">
+    {{range .Docs}}
+    <a href="/doc/{{.Path}}" class="block rounded-lg border border-gray-800 p-4 hover:border-gray-600 transition-colors"
+      hx-get="/doc/{{.Path}}" hx-target="#main-content" hx-push-url="true">
+      <div class="font-medium">{{.Title}}</div>
+      {{if .Description}}<div class="text-sm text-gray-500 mt-1">{{.Description}}</div>{{end}}
+      {{if .IsStub}}<span class="text-xs text-yellow-500">⚠ Needs content</span>{{end}}
+    </a>
+    {{end}}
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{if .Changelog}}
+<div class="mt-8">
+  <h2 class="text-lg font-semibold mb-3">Changelog</h2>
+  <div class="text-sm text-gray-400 space-y-1">
+    {{range .Changelog}}
+    <div>{{.}}</div>
+    {{end}}
+  </div>
+</div>
+{{end}}

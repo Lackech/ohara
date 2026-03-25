@@ -1,0 +1,17 @@
+<div class="mb-4">
+  <a href="/service/{{.Service}}" class="text-sm text-blue-400 hover:underline"
+    hx-get="/service/{{.Service}}" hx-target="#main-content" hx-push-url="true">
+    ← {{.Service}}
+  </a>
+</div>
+
+<div class="flex items-center gap-3 mb-6">
+  <span class="px-2.5 py-1 rounded text-xs font-medium type-{{.DiataxisType}}">
+    {{.DiataxisLabel}}
+  </span>
+  <span class="text-sm text-gray-500">{{.Path}}</span>
+</div>
+
+<article class="prose">
+  {{.HTML}}
+</article>
