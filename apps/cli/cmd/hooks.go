@@ -102,6 +102,31 @@ var watchHookCmd = &cobra.Command{
 
 		bashCmd := input.ToolInput.Command
 
+		// Check if this is a PR creation — remind about docs
+		isPR := strings.Contains(bashCmd, "gh pr create") || strings.Contains(bashCmd, "git push")
+		if isPR {
+			hubRoot, err := FindHubRoot(".")
+			if err == nil {
+				config, _ := LoadHubConfig(hubRoot)
+				if config != nil {
+					editedServices := []string{}
+					for _, repo := range config.Repos {
+						sessionFile := filepath.Join(os.TempDir(), fmt.Sprintf(".ohara-gate-%d-%s", os.Getppid(), repo.Name))
+						if _, err := os.Stat(sessionFile); err == nil {
+							editedServices = append(editedServices, repo.Name)
+						}
+					}
+					if len(editedServices) > 0 {
+						hubDirName := filepath.Base(hubRoot)
+						fmt.Fprintf(os.Stderr, "📚 Creating PR — you edited: %s\n", strings.Join(editedServices, ", "))
+						fmt.Fprintf(os.Stderr, "Consider: ohara build && ohara validate && /create-docs-pr\n")
+						fmt.Fprintf(os.Stderr, "Hub: %s/\n", hubDirName)
+					}
+				}
+			}
+			return nil
+		}
+
 		// Check if this is a git event we care about
 		isGitPull := strings.Contains(bashCmd, "git pull") || strings.Contains(bashCmd, "git fetch")
 		isGitMerge := strings.Contains(bashCmd, "git merge")
