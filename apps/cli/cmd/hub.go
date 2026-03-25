@@ -47,6 +47,15 @@ func FindHubRoot(dir string) (string, error) {
 		current = parent
 	}
 
+	// Also check common subdirectory names
+	absDir, _ := filepath.Abs(dir)
+	for _, sub := range []string{"ohara-docs", "docs"} {
+		configPath := filepath.Join(absDir, sub, hubConfigFile)
+		if _, err := os.Stat(configPath); err == nil {
+			return filepath.Join(absDir, sub), nil
+		}
+	}
+
 	return "", fmt.Errorf("no .ohara.yaml found (run 'ohara init' first)")
 }
 

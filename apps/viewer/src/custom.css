@@ -1,0 +1,18 @@
+/* Ohara custom theme — Diataxis type badges */
+
+:root {
+  --sl-color-accent-low: #1e3a5f;
+  --sl-color-accent: #3b82f6;
+  --sl-color-accent-high: #93c5fd;
+}
+
+/* Diataxis badges in sidebar group labels */
+[data-badge-tutorial] { --sl-color-badge-text: #6ee7b7; --sl-color-badge-bg: #065f46; }
+[data-badge-guide] { --sl-color-badge-text: #93c5fd; --sl-color-badge-bg: #1e40af; }
+[data-badge-reference] { --sl-color-badge-text: #c4b5fd; --sl-color-badge-bg: #581c87; }
+[data-badge-explanation] { --sl-color-badge-text: #fcd34d; --sl-color-badge-bg: #78350f; }
+
+/* Service section dividers */
+.sl-sidebar details > summary {
+  font-weight: 600;
+}
