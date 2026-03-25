@@ -96,47 +96,8 @@ or keep it local for your agents to read.`,
 		os.WriteFile(filepath.Join(hubDir, "README.md"), []byte(readme), 0644)
 		fmt.Printf("✓ Created %s/README.md\n", hubName)
 
-		// Create CLAUDE.md in the WORKSPACE root (parent), not inside hub
-		// This is where the developer opens Claude Code
-		claudeMd := "# " + name + "\n\n" +
-			"Documentation hub: `" + hubName + "/`. Managed by [Ohara](https://github.com/Lackech/ohara).\n\n" +
-			"## Playbooks\n\n" +
-			"Run coordinated agent teams with: `/run-playbook <name> <description>`\n\n" +
-			"| Playbook | Pattern | Use for |\n" +
-			"|----------|---------|--------|\n" +
-			"| `fix-bug` | Sequential | Investigate → implement → test → document |\n" +
-			"| `new-feature` | Phased + parallel | Plan → foundations → parallel implement → docs |\n" +
-			"| `investigate` | Parallel converge | Competing hypotheses → best answer |\n" +
-			"| `review-pr` | Parallel converge | Multi-perspective review → synthesis |\n\n" +
-			"Custom playbooks: add `.md` files to `" + hubName + "/.ohara-playbooks/`\n\n" +
-			"## Agents\n\n" +
-			"Five subagents (in `.claude/agents/`):\n\n" +
-			"- **ohara-orchestrator** — Executes playbooks. Spawns agent teams. Manages phases.\n" +
-			"- **ohara-writer** — Reads code, writes Diataxis docs. Persistent memory + MCP.\n" +
-			"- **ohara-reviewer** — Reviews docs against code for accuracy.\n" +
-			"- **ohara-researcher** — Searches docs to answer questions. Auto-invoked.\n" +
-			"- **ohara-watcher** — Detects stale docs after code changes. Background.\n\n" +
-			"## Skills\n\n" +
-			"- `/run-playbook <name> <desc>` — Execute a playbook with agent team\n" +
-			"- `/validate-docs` — Check structure and coverage (auto-invoked)\n" +
-			"- `/check-staleness [service]` — Compare code changes vs docs (auto-invoked)\n" +
-			"- `/post-merge` — Check docs after PR merge (auto-invoked)\n" +
-			"- `/create-docs-pr <desc>` — Branch, commit, push, open PR\n" +
-			"- `/docs-changelog [service]` — Recent changes from git log\n\n" +
-			"## MCP Tools\n\n" +
-			"`ohara serve` provides: `search_docs`, `list_docs`, `read_doc`, `write_doc`, `validate`, `create_pr`, `changelog`\n\n" +
-			"## Quick Reference\n\n" +
-			"- `" + hubName + "/llms.txt` — Doc index\n" +
-			"- `" + hubName + "/llms-full.txt` — Full content (completed only)\n" +
-			"- `" + hubName + "/AGENTS.md` — Agent instructions\n\n" +
-			"## Diataxis\n\n" +
-			"| Need | Look in | Type |\n" +
-			"|------|---------|------|\n" +
-			"| Execute a task | `<service>/guides/` | How-to Guide |\n" +
-			"| Learn a system | `<service>/tutorials/` | Tutorial |\n" +
-			"| Look up a param | `<service>/reference/` | Reference |\n" +
-			"| Understand why | `<service>/explanation/` | Explanation |\n"
-		os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(claudeMd), 0644)
+		// Create CLAUDE.md in the WORKSPACE root using shared builder
+		os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(buildClaudeMd(name, hubName)), 0644)
 		fmt.Printf("✓ Created CLAUDE.md (workspace root)\n")
 
 		// Create subagents + skills

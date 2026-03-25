@@ -401,6 +401,68 @@ Save to memory:
 func createLightweightSkills(workDir, hubName string) {
 	skillsDir := filepath.Join(workDir, ".claude", "skills")
 
+	// ohara-context — auto-invoked session primer (user never sees this)
+	createSkill(skillsDir, "ohara-context", fmt.Sprintf(`---
+name: ohara-context
+description: >-
+  Ohara workspace context and operating procedures. Load when working in this
+  workspace, when the user asks about services, when starting any multi-step task,
+  when making changes to code, when fixing bugs, building features, investigating
+  issues, reviewing PRs, or doing any work that involves multiple files or repos.
+user-invocable: false
+---
+
+You are working in an Ohara-managed workspace with a documentation hub at %s/.
+
+## Before ANY work
+
+1. Read %s/llms.txt to understand what services exist and what is documented
+2. For any service you will touch, read %s/<service>/CHANGELOG.md
+3. Check if a playbook matches the task (see below)
+
+## Decision tree
+
+Is the task multi-step? (bug fix, feature, investigation, infra change, config change)
+  → YES: Match to a playbook, use ohara-orchestrator or /run-playbook
+  → NO: Continue, but reference hub docs for context
+
+Does the task touch code across multiple repos or services?
+  → YES: MUST use a playbook with file ownership map and worktrees
+  → NO: Can work directly, but still check hub docs
+
+Is the user asking a question about a service?
+  → YES: Search hub docs first, use ohara-researcher, cite sources
+
+Is the task creating infrastructure, config, or environment files?
+  → YES: Read existing patterns from hub reference docs + look at sibling
+    services for conventions before creating files
+
+## Playbook matching
+
+Match the user's intent to a playbook:
+- "fix", "bug", "broken", "error", "failing", "500", "crash" → fix-bug
+- "add", "build", "create", "implement", "feature", "new" → new-feature
+- "why", "investigate", "debug", "understand", "figure out" → investigate
+- "review", "PR", "check", "look at" → review-pr
+
+Run via: /run-playbook <name> <description>
+Or delegate to ohara-orchestrator for complex tasks.
+
+## Scratch space
+
+Write working context to %s/.scratch/tasks/ during multi-step work.
+Other agents read from there for coordination.
+Clean up after: ohara clean <task-id>
+
+## After completing work
+
+1. If docs need updating: use ohara-writer
+2. Run: cd %s && ohara build (update llms.txt, changelogs)
+3. Run: cd %s && ohara validate
+4. If docs changed: /create-docs-pr <description>
+`, hubName, hubName, hubName, hubName, hubName, hubName))
+
+
 	// validate-docs — auto-invoked inline check
 	createSkill(skillsDir, "validate-docs", fmt.Sprintf(`---
 name: validate-docs
