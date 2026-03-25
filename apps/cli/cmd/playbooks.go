@@ -19,20 +19,22 @@ description: >-
 pattern: sequential
 phases:
   - name: investigate
+    execution: subagent
     agent: Explore
-    isolation: none
     description: Find the root cause
   - name: implement
+    execution: subagent
     agent: general-purpose
     isolation: worktree
     description: Implement the fix
   - name: test
+    execution: subagent
     agent: general-purpose
     isolation: worktree
     description: Write and run tests
   - name: document
+    execution: subagent
     agent: ohara-writer
-    isolation: none
     description: Update docs if behavior changed
 review: true
 ---
@@ -105,24 +107,27 @@ description: >-
 pattern: phased
 phases:
   - name: plan
+    execution: subagent
     agent: general-purpose
-    isolation: none
     description: Break down the feature into tasks with file ownership
   - name: foundations
+    execution: subagent
     agent: general-purpose
     isolation: worktree
     description: Shared types, interfaces, migrations (if needed)
-    parallel: false
   - name: implement
+    execution: team
     agent: general-purpose
     isolation: worktree
-    description: Parallel implementation per component/repo
     parallel: true
+    description: Parallel implementation — one teammate per component/repo
   - name: integrate
+    execution: subagent
     agent: general-purpose
     isolation: worktree
     description: Integration testing across components
   - name: document
+    execution: subagent
     agent: ohara-writer
     isolation: none
     description: Write docs for the new feature
@@ -192,18 +197,18 @@ description: >-
 pattern: parallel-converge
 phases:
   - name: hypothesize
+    execution: subagent
     agent: general-purpose
-    isolation: none
     description: Form initial hypotheses
   - name: explore
+    execution: team
     agent: Explore
-    isolation: none
-    description: Each agent investigates one hypothesis
     parallel: true
     team_size: 3
+    description: Each teammate investigates one hypothesis, challenges others
   - name: converge
+    execution: subagent
     agent: general-purpose
-    isolation: none
     description: Synthesize findings and determine root cause
 review: false
 ---
@@ -256,15 +261,15 @@ description: >-
 pattern: parallel-converge
 phases:
   - name: review
+    execution: team
     agent: Explore
-    isolation: none
-    description: Parallel review from multiple perspectives
     parallel: true
     team_size: 3
+    description: Three teammates review in parallel — correctness, security, quality
   - name: synthesize
+    execution: subagent
     agent: general-purpose
-    isolation: none
-    description: Consolidate findings into review summary
+    description: Consolidate all reviews into one summary with priorities
 review: false
 ---
 
