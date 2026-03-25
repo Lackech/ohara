@@ -64,20 +64,10 @@ What is preserved:
 		os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(claudeMd), 0644)
 		fmt.Printf("✓ Updated CLAUDE.md\n")
 
-		// 3. Update MCP config
+		// 3. Update settings (MCP + hooks)
 		mcpConfigDir := filepath.Join(workDir, ".claude")
 		os.MkdirAll(mcpConfigDir, 0755)
-		mcpConfig := map[string]interface{}{
-			"mcpServers": map[string]interface{}{
-				"ohara": map[string]interface{}{
-					"command": "ohara",
-					"args":    []string{"serve"},
-					"cwd":     hubName,
-				},
-			},
-		}
-		mcpData, _ := json.MarshalIndent(mcpConfig, "", "  ")
-		os.WriteFile(filepath.Join(mcpConfigDir, "settings.json"), mcpData, 0644)
+		writeSettingsJson(mcpConfigDir, hubName)
 		fmt.Printf("✓ Updated .claude/settings.json\n")
 
 		// 4. Update starter playbooks (don't overwrite custom ones)
@@ -96,53 +86,69 @@ What is preserved:
 	},
 }
 
+func writeSettingsJson(configDir, hubName string) {
+	settings := map[string]interface{}{
+		"mcpServers": map[string]interface{}{
+			"ohara": map[string]interface{}{
+				"command": "ohara",
+				"args":    []string{"serve"},
+				"cwd":     hubName,
+			},
+		},
+		"hooks": map[string]interface{}{
+			"PreToolUse": []map[string]interface{}{
+				{
+					"matcher": "Edit|Write",
+					"hooks": []map[string]interface{}{
+						{"type": "command", "command": "ohara gate $TOOL_INPUT_FILE"},
+					},
+				},
+			},
+			"PostToolUse": []map[string]interface{}{
+				{
+					"matcher": "Bash",
+					"hooks": []map[string]interface{}{
+						{"type": "command", "command": "ohara watch-hook"},
+					},
+				},
+			},
+			"Stop": []map[string]interface{}{
+				{
+					"hooks": []map[string]interface{}{
+						{"type": "command", "command": "ohara session-summary"},
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(settings, "", "  ")
+	os.WriteFile(filepath.Join(configDir, "settings.json"), data, 0644)
+}
+
 func buildClaudeMd(name, hubName string) string {
 	return "# " + name + "\n\n" +
-		"Documentation hub: `" + hubName + "/`. Managed by [Ohara](https://github.com/Lackech/ohara) v" + Version + ".\n\n" +
-		"## Standard Operating Procedures\n\n" +
-		"BEFORE starting any multi-step task:\n" +
-		"1. Read `" + hubName + "/llms.txt` for service context\n" +
-		"2. Check if a playbook in `" + hubName + "/.ohara-playbooks/` matches the task\n" +
-		"3. If yes: use `/run-playbook <name> <description>`\n" +
-		"4. If no: still read relevant docs from the hub before working\n\n" +
-		"NEVER start multi-file or cross-repo work without checking the hub first.\n\n" +
-		"### When to use playbooks\n\n" +
-		"| User says | Playbook | What happens |\n" +
-		"|-----------|----------|-------------|\n" +
-		"| fix, bug, broken, error, failing | `fix-bug` | investigate → implement → test → document |\n" +
-		"| add, build, create, feature | `new-feature` | plan → foundations → parallel implement → docs |\n" +
-		"| why, investigate, debug, understand | `investigate` | competing hypotheses → converge |\n" +
-		"| review, PR, check | `review-pr` | multi-perspective review → synthesize |\n\n" +
-		"Custom playbooks: add `.md` files to `" + hubName + "/.ohara-playbooks/`\n\n" +
-		"## Agents\n\n" +
-		"| Agent | Auto-invoked | Purpose |\n" +
-		"|-------|-------------|--------|\n" +
-		"| **ohara-orchestrator** | When running playbooks | Coordinates agent teams, manages phases |\n" +
-		"| **ohara-writer** | After ohara generate | Reads code, writes Diataxis docs |\n" +
-		"| **ohara-reviewer** | When checking accuracy | Compares docs against code |\n" +
-		"| **ohara-researcher** | When asking about services | Searches docs, cites sources |\n" +
-		"| **ohara-watcher** | After git pull, PR merge | Detects stale docs (background) |\n\n" +
-		"## Skills\n\n" +
-		"| Skill | Trigger | Purpose |\n" +
-		"|-------|---------|--------|\n" +
-		"| `/run-playbook <name> <desc>` | Manual | Execute a playbook |\n" +
-		"| `/validate-docs` | Auto | Check structure and coverage |\n" +
-		"| `/check-staleness [service]` | Auto after git pull | Code changes vs docs |\n" +
-		"| `/post-merge` | Auto after merge | Check if docs need updating |\n" +
-		"| `/create-docs-pr <desc>` | Manual | Branch → commit → push → PR |\n" +
-		"| `/docs-changelog [service]` | Auto | Recent changes from git log |\n\n" +
-		"## Quick Reference\n\n" +
-		"- `" + hubName + "/llms.txt` — Doc index (read this first)\n" +
-		"- `" + hubName + "/llms-full.txt` — Full content (completed only)\n" +
-		"- `" + hubName + "/<service>/CHANGELOG.md` — PR/commit history per service\n" +
-		"- `" + hubName + "/AGENTS.md` — Detailed agent instructions\n\n" +
-		"## Diataxis\n\n" +
-		"| Need | Look in | Type |\n" +
-		"|------|---------|------|\n" +
-		"| Execute a task | `<service>/guides/` | How-to Guide |\n" +
-		"| Learn a system | `<service>/tutorials/` | Tutorial |\n" +
-		"| Look up a param | `<service>/reference/` | Reference |\n" +
-		"| Understand why | `<service>/explanation/` | Explanation |\n"
+		"Doc hub: `" + hubName + "/` — read `" + hubName + "/llms.txt` for index. Ohara v" + Version + ".\n\n" +
+		"## Team\n\n" +
+		"| Agent | Strength | When to use |\n" +
+		"|-------|----------|-------------|\n" +
+		"| ohara-researcher | Fast doc lookup | Before touching unfamiliar service |\n" +
+		"| ohara-writer | Doc generation from code | After code changes |\n" +
+		"| ohara-reviewer | Accuracy check | After doc changes |\n" +
+		"| ohara-watcher | Staleness detection | After git pull (auto via hook) |\n" +
+		"| ohara-orchestrator | Playbook execution | Spawned by /fix, /feature, etc. |\n\n" +
+		"## Commands\n\n" +
+		"| Command | What it does |\n" +
+		"|---------|-------------|\n" +
+		"| `/fix <desc>` | Bug fix: investigate → implement → test → document |\n" +
+		"| `/feature <desc>` | New feature: plan → parallel implement → integrate → docs |\n" +
+		"| `/investigate <desc>` | Research: competing hypotheses → converge |\n" +
+		"| `/review-pr <#>` | PR review: correctness + security + quality → synthesis |\n" +
+		"| `/validate-docs` | Check doc structure and coverage |\n" +
+		"| `/create-docs-pr <desc>` | Create a PR with doc changes |\n\n" +
+		"## Rules\n\n" +
+		"1. Never edit a service you haven't read docs for\n" +
+		"2. Multi-step work → use /fix, /feature, /investigate, or /review-pr\n" +
+		"3. After code changes, ask user if docs need updating\n"
 }
 
 func updatePlaybooks(hubRoot string) {

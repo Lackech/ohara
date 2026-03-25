@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -107,18 +106,8 @@ or keep it local for your agents to read.`,
 		mcpConfigDir := filepath.Join(workDir, ".claude")
 		os.MkdirAll(mcpConfigDir, 0755)
 
-		mcpConfig := map[string]interface{}{
-			"mcpServers": map[string]interface{}{
-				"ohara": map[string]interface{}{
-					"command": "ohara",
-					"args":    []string{"serve"},
-					"cwd":     hubName,
-				},
-			},
-		}
-		mcpData, _ := json.MarshalIndent(mcpConfig, "", "  ")
-		os.WriteFile(filepath.Join(mcpConfigDir, "settings.json"), mcpData, 0644)
-		fmt.Printf("✓ Created .claude/settings.json (MCP server: ohara serve)\n")
+		writeSettingsJson(mcpConfigDir, hubName)
+		fmt.Printf("✓ Created .claude/settings.json (MCP + hooks)\n")
 
 		// Initialize git repo
 		gitInit := exec.Command("git", "init")
