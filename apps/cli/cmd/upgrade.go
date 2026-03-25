@@ -98,7 +98,7 @@ What is preserved:
 
 func buildClaudeMd(name, hubName string) string {
 	return "# " + name + "\n\n" +
-		"Documentation hub: `" + hubName + "/`. Managed by [Ohara](https://github.com/Lackech/ohara).\n\n" +
+		"Documentation hub: `" + hubName + "/`. Managed by [Ohara](https://github.com/Lackech/ohara) v" + Version + ".\n\n" +
 		"## Standard Operating Procedures\n\n" +
 		"BEFORE starting any multi-step task:\n" +
 		"1. Read `" + hubName + "/llms.txt` for service context\n" +

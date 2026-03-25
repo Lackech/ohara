@@ -7,7 +7,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Version is set by goreleaser via ldflags, or "dev" for local builds
+var Version = "dev"
+
 var rootCmd = &cobra.Command{
+	Version: Version,
 	Use:   "ohara",
 	Short: "Ohara — Agent-optimized documentation for your codebase",
 	Long: `Ohara creates a documentation hub for your organization's repositories.
