@@ -1,80 +1,49 @@
 # Contributing to Ohara
 
-Thanks for your interest in contributing to Ohara!
+## Prerequisites
 
-## Development Setup
+- [Go](https://go.dev) (v1.22+)
+- [Node.js](https://nodejs.org) (v20+ for Starlight viewer)
 
-### Prerequisites
-
-- [Bun](https://bun.sh) (latest)
-- [Node.js](https://nodejs.org) (v20+)
-- [pnpm](https://pnpm.io) (v9+)
-- [Go](https://go.dev) (v1.22+ for CLI)
-- PostgreSQL (or [Neon](https://neon.tech) account)
-
-### Getting Started
+## Getting Started
 
 ```bash
-# Clone the repo
-git clone https://github.com/ohara-project/ohara.git
-cd ohara
-
-# Install dependencies
-pnpm install
-
-# Copy environment variables
-cp apps/api/.env.example apps/api/.env
-# Edit .env with your database URL
-
-# Push database schema
-pnpm db:push
-
-# Start development servers
-pnpm dev
-```
-
-The API runs at `http://localhost:3001` and the web app at `http://localhost:3000`.
-
-### Building the CLI
-
-```bash
-cd apps/cli
+git clone https://github.com/Lackech/ohara.git
+cd ohara/apps/cli
 go build -o ohara .
 ./ohara --help
 ```
 
-## Project Structure
-
-```
-apps/
-  api/       — Elysia API server (Bun)
-  web/       — Next.js frontend
-  cli/       — Go CLI
-packages/
-  shared/    — Shared types, schemas, markdown pipeline
-  config/    — Shared tsconfig, ESLint, Prettier
-docs/        — Ohara's own documentation (dogfood)
-```
-
 ## Making Changes
 
-1. Create a branch from `develop`
-2. Make your changes
-3. Run `pnpm turbo typecheck` and `pnpm turbo build`
-4. Submit a PR against `develop`
+1. Create a branch from `main`
+2. Make your changes in `apps/cli/`
+3. Run `go build -o ohara .` to verify
+4. Test: `./ohara init`, `./ohara generate`, `./ohara view`
+5. Submit a PR
 
 ## Code Style
 
-- TypeScript: Prettier + ESLint (configured in `packages/config`)
 - Go: `gofmt`
-- Commits: Conventional commits preferred but not enforced
+- Commits: Conventional commits preferred
 
 ## Key Files
 
-If you're looking to understand the codebase, start with these:
+| File | Purpose |
+|------|---------|
+| `cmd/init.go` | Hub creation + agent/skill/hook setup |
+| `cmd/skills.go` | All subagent and skill definitions |
+| `cmd/upgrade.go` | CLAUDE.md builder + settings.json with hooks |
+| `cmd/buildsite.go` | Starlight content generation from hub |
+| `cmd/hooks.go` | CLI hook commands (gate, watch-hook, session-summary) |
+| `cmd/playbooks.go` | Starter playbook definitions |
+| `cmd/serve.go` | Local MCP server (stdio, 7 tools) |
+| `cmd/hub.go` | Hub config types and helpers |
 
-1. `apps/api/src/db/schema.ts` — Database schema
-2. `packages/shared/src/markdown/parser.ts` — Markdown pipeline
-3. `apps/api/src/modules/git/sync-service.ts` — Git sync engine
-4. `apps/api/src/modules/agent/mcp/server.ts` — MCP server
-5. `apps/api/src/modules/search/hybrid.ts` — Hybrid search (RRF)
+## Releasing
+
+```bash
+git tag v0.X.0
+git push origin v0.X.0
+cd apps/cli && GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
+```
