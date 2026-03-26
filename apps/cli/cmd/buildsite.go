@@ -80,7 +80,7 @@ After running, use 'ohara view' to preview or 'astro build' to generate static H
 					}
 
 					destPath := filepath.Join(destDir, info.Name())
-					copyFile(path, destPath)
+					copyFileFixLangs(path, destPath)
 					totalDocs++
 					return nil
 				})
@@ -90,14 +90,37 @@ After running, use 'ohara view' to preview or 'astro build' to generate static H
 			changelogSrc := filepath.Join(repoDocsDir, "CHANGELOG.md")
 			if _, err := os.Stat(changelogSrc); err == nil {
 				changelogDest := filepath.Join(contentDir, repo.Name, "changelog.md")
-				// Add frontmatter to changelog
 				data, _ := os.ReadFile(changelogSrc)
-				content := string(data)
-				if !strings.HasPrefix(content, "---") {
-					content = "---\ntitle: Changelog\ndescription: Recent changes and PR history\n---\n\n" + content
+				clContent := string(data)
+				if !strings.HasPrefix(clContent, "---") {
+					clContent = "---\ntitle: Changelog\ndescription: Recent changes and PR history\n---\n\n" + clContent
 				}
-				os.WriteFile(changelogDest, []byte(content), 0644)
+				os.WriteFile(changelogDest, []byte(clContent), 0644)
 			}
+
+			// Generate service index page
+			serviceIndexContent := fmt.Sprintf("---\ntitle: %s\ndescription: Documentation for %s\n---\n\n", repo.Name, repo.Name)
+			serviceIndexContent += fmt.Sprintf("# %s\n\n", repo.Name)
+			if repo.Remote != "" {
+				serviceIndexContent += fmt.Sprintf("**Repository:** [%s](%s)\n\n", repo.Remote, repo.Remote)
+			}
+			for _, ddir := range []string{"tutorials", "guides", "reference", "explanation"} {
+				srcDir := filepath.Join(repoDocsDir, ddir)
+				docs := collectMarkdownFiles(srcDir)
+				if len(docs) == 0 {
+					continue
+				}
+				labels := map[string]string{"tutorials": "Tutorials", "guides": "Guides", "reference": "Reference", "explanation": "Explanation"}
+				serviceIndexContent += fmt.Sprintf("## %s\n\n", labels[ddir])
+				for _, doc := range docs {
+					title := extractTitle(doc.path)
+					name := strings.TrimSuffix(filepath.Base(doc.path), filepath.Ext(doc.path))
+					serviceIndexContent += fmt.Sprintf("- [%s](/%s/%s/%s/)\n", title, repo.Name, ddir, name)
+				}
+				serviceIndexContent += "\n"
+			}
+			os.MkdirAll(filepath.Join(contentDir, repo.Name), 0755)
+			os.WriteFile(filepath.Join(contentDir, repo.Name, "index.md"), []byte(serviceIndexContent), 0644)
 		}
 
 		fmt.Printf("✓ Copied %d docs into viewer\n", totalDocs)
@@ -235,6 +258,28 @@ export default defineConfig({
 `, config.Name, string(sidebarJSON))
 
 	os.WriteFile(filepath.Join(viewerDir, "astro.config.mjs"), []byte(astroConfig), 0644)
+}
+
+// copyFileFixLangs copies a markdown file, replacing unsupported code block languages
+func copyFileFixLangs(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+
+	// Replace unsupported code block languages with supported ones
+	content := string(data)
+	unsupported := map[string]string{
+		"```env": "```bash",
+		"```dotenv": "```bash",
+		"```conf": "```ini",
+		"```config": "```ini",
+	}
+	for old, newLang := range unsupported {
+		content = strings.ReplaceAll(content, old, newLang)
+	}
+
+	return os.WriteFile(dst, []byte(content), 0644)
 }
 
 func copyFile(src, dst string) error {
