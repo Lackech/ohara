@@ -140,26 +140,19 @@ After running, use 'ohara view' to preview or 'astro build' to generate static H
 func generateLandingPage(contentDir string, config *HubConfig, hubRoot string) {
 	var sections []string
 
-	sections = append(sections, `---
-title: Documentation Hub
+	sections = append(sections, fmt.Sprintf(`---
+title: %s
 description: Diataxis-structured documentation for all services
 template: splash
 hero:
-  title: Documentation Hub
-  tagline: Diataxis-structured docs for all services. Managed by Ohara.
-  actions:
-`)
+  title: %s
+  tagline: Diataxis-structured documentation hub. %d services tracked.
+---
 
-	// Add first service as primary link
-	if len(config.Repos) > 0 {
-		sections = append(sections, fmt.Sprintf(`    - text: Browse %s
-      link: /%s/
-      icon: right-arrow
-`, config.Repos[0].Name, config.Repos[0].Name))
-	}
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
 
-	sections = append(sections, "---\n\nimport { Card, CardGrid } from '@astrojs/starlight/components';\n\n")
-	sections = append(sections, "<CardGrid stagger>\n")
+<CardGrid>
+`, config.Name, config.Name, len(config.Repos)))
 
 	diataxisLabels := map[string]string{
 		"tutorials": "Tutorials", "guides": "Guides",
@@ -184,9 +177,11 @@ hero:
 			}
 		}
 
+		desc := fmt.Sprintf("%d docs — %s", total, strings.Join(badges, " · "))
+
 		sections = append(sections, fmt.Sprintf(
-			"<Card title=\"%s\" icon=\"document\">\n%d docs — %s\n</Card>\n\n",
-			repo.Name, total, strings.Join(badges, " · "),
+			"<LinkCard title=\"%s\" href=\"/%s/\" description=\"%s\" />\n\n",
+			repo.Name, repo.Name, desc,
 		))
 	}
 
