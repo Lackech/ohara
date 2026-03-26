@@ -39,23 +39,49 @@ First time? Run 'ohara init:viewer' to set up the Starlight project.`,
 		fmt.Println("Building site from hub...")
 		buildSiteCmd.RunE(cmd, args)
 
-		// Start Astro dev server
 		port, _ := cmd.Flags().GetInt("port")
 		noBrowser, _ := cmd.Flags().GetBool("no-browser")
+		devMode, _ := cmd.Flags().GetBool("dev")
+
+		if devMode {
+			// Dev mode: hot reload, no search
+			fmt.Printf("\nStarting Starlight (dev mode) at http://localhost:%d\n", port)
+			fmt.Println("Note: search is disabled in dev mode. Use 'ohara view' without --dev for search.")
+
+			if !noBrowser {
+				go openBrowser(fmt.Sprintf("http://localhost:%d", port))
+			}
+
+			astro := exec.Command("npx", "astro", "dev", "--port", fmt.Sprintf("%d", port))
+			astro.Dir = viewerDir
+			astro.Stdout = os.Stdout
+			astro.Stderr = os.Stderr
+			astro.Stdin = os.Stdin
+			return astro.Run()
+		}
+
+		// Production mode: build then preview (search works)
+		fmt.Println("Building static site...")
+		astroBuild := exec.Command("npx", "astro", "build")
+		astroBuild.Dir = viewerDir
+		astroBuild.Stdout = os.Stdout
+		astroBuild.Stderr = os.Stderr
+		if err := astroBuild.Run(); err != nil {
+			return fmt.Errorf("astro build failed: %w", err)
+		}
+
+		fmt.Printf("\nStarting Starlight at http://localhost:%d (search enabled)\n", port)
 
 		if !noBrowser {
 			go openBrowser(fmt.Sprintf("http://localhost:%d", port))
 		}
 
-		fmt.Printf("\nStarting Starlight at http://localhost:%d\n", port)
-
-		astro := exec.Command("npx", "astro", "dev", "--port", fmt.Sprintf("%d", port))
-		astro.Dir = viewerDir
-		astro.Stdout = os.Stdout
-		astro.Stderr = os.Stderr
-		astro.Stdin = os.Stdin
-
-		return astro.Run()
+		astroPreview := exec.Command("npx", "astro", "preview", "--port", fmt.Sprintf("%d", port))
+		astroPreview.Dir = viewerDir
+		astroPreview.Stdout = os.Stdout
+		astroPreview.Stderr = os.Stderr
+		astroPreview.Stdin = os.Stdin
+		return astroPreview.Run()
 	},
 }
 
@@ -188,6 +214,7 @@ func openBrowser(url string) {
 func init() {
 	viewCmd.Flags().IntP("port", "p", 4321, "Port to serve on")
 	viewCmd.Flags().Bool("no-browser", false, "Don't open browser automatically")
+	viewCmd.Flags().Bool("dev", false, "Dev mode: hot reload but no search")
 	rootCmd.AddCommand(viewCmd)
 	rootCmd.AddCommand(initViewerCmd)
 }
