@@ -30,6 +30,10 @@ tools: Read, Grep, Glob, Bash, Edit, Write
 mcpServers:
   - ohara
 maxTurns: 50
+effort: high
+criticalSystemReminder_EXPERIMENTAL: >-
+  Every claim must be verifiable from source code. NEVER write TODO or placeholder content.
+  Read .ohara-prompts/ before writing. Use MCP write_doc to save.
 ---
 
 You are Ohara Writer. Read code, write docs.
@@ -70,10 +74,14 @@ mcpServers:
   - ohara
 disallowedTools: mcp__ohara__write_doc, mcp__ohara__create_pr
 maxTurns: 30
+effort: medium
+omitClaudeMd: true
+criticalSystemReminder_EXPERIMENTAL: >-
+  Compare every doc claim against actual code. Report INACCURATE, MISSING, or ACCURATE with exact line references from both doc and code.
 ---
 
 Compare docs against code. Report:
-- INACCURATE: Doc says X, code says Y
+- INACCURATE: Doc says X, code says Y (with line refs)
 - MISSING: Code feature not in docs
 - ACCURATE: Matches
 
@@ -94,6 +102,8 @@ disallowedTools: mcp__ohara__write_doc, mcp__ohara__create_pr
 skills:
   - ohara-service-index
 maxTurns: 20
+effort: low
+omitClaudeMd: true
 ---
 
 Answer questions from docs. Service index is pre-loaded.
@@ -114,6 +124,8 @@ mcpServers:
   - ohara
 disallowedTools: mcp__ohara__write_doc, mcp__ohara__create_pr
 maxTurns: 25
+effort: low
+omitClaudeMd: true
 ---
 
 Check recent commits vs docs. Map changed files to doc types. Report stale docs.
@@ -127,37 +139,68 @@ name: ohara-orchestrator
 description: >-
   Playbook executor. Coordinates agent teams for multi-step tasks.
   Spawned by /fix, /feature, /investigate, /review-pr.
-model: sonnet
+model: opus
 memory: project
 permissionMode: acceptEdits
 tools: Read, Grep, Glob, Bash, Edit, Write, Agent
 mcpServers:
   - ohara
 maxTurns: 100
+effort: high
+criticalSystemReminder_EXPERIMENTAL: >-
+  Follow playbook phases strictly. Give workers precise instructions with file paths and line numbers.
+  Never fabricate results — wait for task notifications. File ownership is STRICT — no two agents edit the same file.
+  Use native tools (TeamCreate, TaskCreate, SendMessage) for COORDINATION. Use scratch files for CONTENT.
 ---
 
-Execute playbooks using Claude Code's native tools.
+Execute playbooks using two coordination systems together.
 
-## For subagent phases
+## Coordination Model
 
-Agent({ prompt: "task + scratch context", subagent_type: "Explore" or "general-purpose", isolation: "worktree" })
+| System | Purpose | Examples |
+|--------|---------|---------|
+| **Native tools** | Orchestration: assign, track, message | TeamCreate, TaskCreate, TaskUpdate, SendMessage |
+| **Scratch files** | Content workspace: plans, findings, notes | .scratch/tasks/<id>/investigation.md, plan.md |
 
-## For team phases
+## For subagent phases (sequential)
 
-TeamCreate({ team_name: "<task-id>" })
-TaskCreate({ subject: "per-agent task", description: "with file ownership" })
-Agent({ team_name: "<task-id>", name: "agent-1", isolation: "worktree" })
+TaskCreate({ subject: "[playbook] Phase N: phase-name", description: "..." })
+TaskUpdate({ taskId: "<id>", status: "in_progress" })
+Agent({ prompt: "Precise instructions with file paths. Write results to %s/.scratch/tasks/<task-id>/<phase>.md", subagent_type: "Explore" or "general-purpose", isolation: "worktree" })
+TaskUpdate({ taskId: "<id>", status: "completed" })
+
+## For team phases (parallel)
+
+TaskCreate({ subject: "[playbook] Phase N: phase-name", description: "..." })
+TaskUpdate({ taskId: "<id>", status: "in_progress" })
+TeamCreate({ team_name: "<task-id>-<phase>" })
+// Per-agent assignments:
+TaskCreate({ subject: "Agent 1: <scope>", description: "file ownership: [files]" })
+TaskCreate({ subject: "Agent 2: <scope>", description: "file ownership: [files]" })
+Agent({ team_name: "<task-id>-<phase>", name: "agent-1", prompt: "...", isolation: "worktree" })
+Agent({ team_name: "<task-id>-<phase>", name: "agent-2", prompt: "...", isolation: "worktree" })
+// Wait for task-notification from each agent
+// Read results from %s/.scratch/tasks/<task-id>/
+TaskUpdate({ taskId: "<id>", status: "completed" })
+
+## Agent Communication
+
+- SendMessage({ to: "agent-name", message: "blocker found: shared type changed" }) — alert teammates
+- SendMessage({ to: "*", message: "all stop: critical issue" }) — broadcast to team
+- Agents write detailed findings to scratch files; use SendMessage for urgent coordination only
 
 ## Rules
 
-1. File ownership: no two agents edit the same file
+1. File ownership: no two agents edit the same file — assign in TaskCreate description
 2. Cross-repo: one agent per repo, shared types first
-3. Review gates: STOP, present findings, wait for approval
-4. After completion: ohara-writer for docs, ohara build, create PR
-5. Write all coordination to %s/.scratch/tasks/
+3. Review gates: STOP, present findings, wait for user approval
+4. After completion: spawn ohara-writer for docs, run ohara build, create PR
+5. Write all content to %s/.scratch/tasks/
+6. Use TaskUpdate to track EVERY phase transition
+7. Use SendMessage when an agent discovers something affecting other agents
 
 Hub: %s/
-`, hubName, hubName))
+`, hubName, hubName, hubName, hubName))
 
 	fmt.Printf("✓ Created .claude/agents/ (5 subagents)\n")
 }
@@ -185,6 +228,8 @@ argument-hint: <description of the bug>
 disable-model-invocation: true
 context: fork
 agent: ohara-orchestrator
+model: opus
+when-to-use: When the user describes a bug, error, or unexpected behavior that needs fixing
 ---
 
 Run fix-bug playbook for: $ARGUMENTS
@@ -204,6 +249,8 @@ argument-hint: <description of the feature>
 disable-model-invocation: true
 context: fork
 agent: ohara-orchestrator
+model: opus
+when-to-use: When the user wants to add new functionality or build something new
 ---
 
 Run new-feature playbook for: $ARGUMENTS
@@ -224,6 +271,8 @@ argument-hint: <what to investigate>
 disable-model-invocation: true
 context: fork
 agent: ohara-orchestrator
+model: opus
+when-to-use: When the user wants to research, understand, or diagnose a problem
 ---
 
 Run investigate playbook for: $ARGUMENTS
@@ -243,6 +292,9 @@ argument-hint: <PR number or branch>
 disable-model-invocation: true
 context: fork
 agent: ohara-orchestrator
+model: opus
+when-to-use: When the user wants to review a pull request or code changes
+allowed-tools: Read, Grep, Glob, Bash, Agent
 ---
 
 Run review-pr playbook for: $ARGUMENTS
@@ -261,6 +313,10 @@ Run review-pr playbook for: $ARGUMENTS
 	createSkill(skillsDir, "validate-docs", fmt.Sprintf(`---
 name: validate-docs
 description: Check documentation structure and coverage
+model: haiku
+effort: low
+when-to-use: When the user asks about documentation quality, coverage, or structure
+allowed-tools: Read, Grep, Glob, Bash
 ---
 
 !`+"`"+`cd %s && ohara validate 2>&1`+"`"+`
@@ -272,6 +328,7 @@ name: create-docs-pr
 description: Create a PR with documentation changes
 argument-hint: <description>
 disable-model-invocation: true
+allowed-tools: Read, Grep, Glob, Bash
 ---
 
 cd %s && ohara build && ohara validate

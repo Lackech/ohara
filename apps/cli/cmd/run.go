@@ -131,11 +131,23 @@ Instructions:
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean [task-id]",
-	Short: "Clean up scratch space after a task is complete",
+	Short: "Clean up scratch space or prune agent memory",
 	Long: `Removes temporary files from .scratch/tasks/ after a playbook completes.
-Without arguments, lists active tasks. With a task ID, removes that task's scratch space.`,
+Without arguments, lists active tasks. With a task ID, removes that task's scratch space.
+
+Use --memory to manage agent memory:
+  ohara clean --memory           List agent memory with sizes and ages
+  ohara clean --memory --force   Delete memory entries older than 30 days`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		memoryFlag, _ := cmd.Flags().GetBool("memory")
+		forceFlag, _ := cmd.Flags().GetBool("force")
+
+		if memoryFlag {
+			workDir, _ := os.Getwd()
+			return pruneAgentMemory(workDir, forceFlag)
+		}
+
 		hubRoot, err := FindHubRoot(".")
 		if err != nil {
 			return err
@@ -196,6 +208,98 @@ Without arguments, lists active tasks. With a task ID, removes that task's scrat
 	},
 }
 
+// pruneAgentMemory scans .claude/agent-memory/ and reports/prunes stale entries
+func pruneAgentMemory(workDir string, force bool) error {
+	memoryDir := filepath.Join(workDir, ".claude", "agent-memory")
+
+	if _, err := os.Stat(memoryDir); os.IsNotExist(err) {
+		fmt.Println("No agent memory found (.claude/agent-memory/ does not exist).")
+		return nil
+	}
+
+	staleThreshold := 30 * 24 * time.Hour // 30 days
+	now := time.Now()
+	totalSize := int64(0)
+	staleCount := 0
+	totalCount := 0
+
+	fmt.Println("Agent memory:")
+	fmt.Println()
+
+	// Walk each agent's memory directory
+	agentDirs, err := os.ReadDir(memoryDir)
+	if err != nil {
+		return fmt.Errorf("failed to read agent-memory: %w", err)
+	}
+
+	for _, agentDir := range agentDirs {
+		if !agentDir.IsDir() {
+			continue
+		}
+
+		agentPath := filepath.Join(memoryDir, agentDir.Name())
+		agentSize := int64(0)
+		agentFiles := 0
+		agentStale := 0
+
+		entries, _ := os.ReadDir(agentPath)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			agentFiles++
+			totalCount++
+			agentSize += info.Size()
+			totalSize += info.Size()
+
+			age := now.Sub(info.ModTime())
+			if age > staleThreshold {
+				agentStale++
+				staleCount++
+
+				if force {
+					os.Remove(filepath.Join(agentPath, entry.Name()))
+					fmt.Printf("  deleted: %s/%s (age: %dd)\n", agentDir.Name(), entry.Name(), int(age.Hours()/24))
+				}
+			}
+		}
+
+		status := ""
+		if agentStale > 0 && !force {
+			status = fmt.Sprintf(" ⚠ %d stale (>30 days)", agentStale)
+		}
+
+		fmt.Printf("  %s: %d files, %s%s\n", agentDir.Name(), agentFiles, formatBytes(agentSize), status)
+	}
+
+	fmt.Println()
+	if force && staleCount > 0 {
+		fmt.Printf("✓ Pruned %d stale entries. Total remaining: %d files (%s)\n", staleCount, totalCount-staleCount, formatBytes(totalSize))
+	} else if staleCount > 0 {
+		fmt.Printf("Found %d stale entries (>30 days). Run with --force to prune.\n", staleCount)
+		fmt.Printf("Total: %d files (%s)\n", totalCount, formatBytes(totalSize))
+	} else {
+		fmt.Printf("All %d entries are fresh. Total: %s\n", totalCount, formatBytes(totalSize))
+	}
+
+	if totalSize > 5*1024 {
+		fmt.Printf("\n⚠ Agent memory is large (%s). Consider pruning to keep agents fast.\n", formatBytes(totalSize))
+	}
+
+	return nil
+}
+
+func formatBytes(b int64) string {
+	if b < 1024 {
+		return fmt.Sprintf("%dB", b)
+	}
+	return fmt.Sprintf("%.1fKB", float64(b)/1024)
+}
+
 func generateTaskID(playbookName string) string {
 	b := make([]byte, 4)
 	rand.Read(b)
@@ -219,6 +323,8 @@ func listPlaybooks(hubRoot string) []string {
 }
 
 func init() {
+	cleanCmd.Flags().Bool("memory", false, "List and prune stale agent memory entries")
+	cleanCmd.Flags().Bool("force", false, "Actually delete stale entries (default: dry-run)")
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(cleanCmd)
 }

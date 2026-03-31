@@ -37,12 +37,19 @@ phases:
     agent: ohara-writer
     description: Update docs if behavior changed
 review: true
+coordination: native+scratch
 ---
 
 # Bug Fix Playbook
 
 ## Context
 Read the scratch space for this task: .scratch/tasks/<task-id>/
+
+## Coordination
+This playbook uses native tools for progress tracking and scratch files for content:
+- **TaskCreate** at playbook start with subject "[fix-bug] <description>"
+- **TaskUpdate** at each phase boundary (in_progress → completed)
+- **Scratch files** for investigation notes, implementation details, test results
 
 ## Phase 1: Investigate
 Agent: Explore (read-only, fast)
@@ -133,12 +140,25 @@ phases:
     description: Write docs for the new feature
 review: true
 cross_repo: true
+coordination: native+scratch
 ---
 
 # New Feature Playbook
 
 ## Context
 Read the scratch space: .scratch/tasks/<task-id>/
+
+## Coordination
+This playbook uses native tools for orchestration and scratch files for content:
+- **TaskCreate** at playbook start with subject "[new-feature] <description>"
+- **TaskUpdate** at each phase boundary
+- **Phase 3 (implement) uses TeamCreate** for parallel agents:
+  1. TeamCreate({ team_name: "<task-id>-implement" })
+  2. TaskCreate per component agent with file ownership in description
+  3. Agent per component with team_name and isolation: "worktree"
+  4. Wait for task-notifications from each agent
+- **SendMessage** if any agent discovers a blocker affecting others
+- **Scratch files** for plan, per-agent findings, handoffs
 
 ## Phase 1: Plan (single agent, no worktree)
 
@@ -211,12 +231,24 @@ phases:
     agent: general-purpose
     description: Synthesize findings and determine root cause
 review: false
+coordination: native+scratch
 ---
 
 # Investigation Playbook
 
 ## Context
 Read the scratch space: .scratch/tasks/<task-id>/
+
+## Coordination
+This playbook uses native tools for team orchestration and scratch files for findings:
+- **TaskCreate** at playbook start with subject "[investigate] <description>"
+- **Phase 2 (explore) uses TeamCreate** for parallel hypothesis testing:
+  1. TeamCreate({ team_name: "<task-id>-explore" })
+  2. TaskCreate per hypothesis agent
+  3. Agent per hypothesis with team_name
+  4. Wait for task-notifications
+- **SendMessage** if an agent finds strong evidence — alert others immediately
+- **Scratch files** for hypotheses, per-hypothesis findings, conclusion
 
 ## Phase 1: Hypothesize (single agent)
 
@@ -271,12 +303,24 @@ phases:
     agent: general-purpose
     description: Consolidate all reviews into one summary with priorities
 review: false
+coordination: native+scratch
 ---
 
 # PR Review Playbook
 
 ## Context
 PR number or branch name in scratch: .scratch/tasks/<task-id>/
+
+## Coordination
+This playbook uses native tools for parallel review orchestration:
+- **TaskCreate** at playbook start with subject "[review-pr] <PR ref>"
+- **Phase 1 (review) uses TeamCreate** for 3 parallel reviewers:
+  1. TeamCreate({ team_name: "<task-id>-review" })
+  2. TaskCreate for each perspective (correctness, security, quality)
+  3. Agent per perspective with team_name
+  4. Wait for task-notifications
+- **SendMessage** if a reviewer finds a blocking issue — alert orchestrator immediately
+- **Scratch files** for per-perspective review notes, synthesized summary
 
 ## Phase 1: Parallel Review
 

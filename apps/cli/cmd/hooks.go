@@ -52,11 +52,15 @@ var hookPromptCmd = &cobra.Command{
 			return nil
 		}
 
-		// Search hub docs for matching content
-		var contextParts []string
+		// Boost keywords based on Diataxis intent matching
+		keywords = boostByIntent(prompt, keywords)
 
-		// 1. Search across all markdown files
-		matches := searchHub(hubRoot, keywords)
+		// Load already-injected doc paths for dedup
+		injected := loadInjectedPaths()
+
+		// Search hub docs for matching content, excluding already-injected
+		var contextParts []string
+		matches := searchHub(hubRoot, keywords, injected)
 
 		if len(matches) > 0 {
 			contextParts = append(contextParts,
@@ -67,7 +71,7 @@ var hookPromptCmd = &cobra.Command{
 			}
 		}
 
-		// 2. Check changelogs for recent related changes
+		// Check changelogs for recent related changes
 		changelogHits := searchChangelogs(hubRoot, config, keywords)
 		if len(changelogHits) > 0 {
 			contextParts = append(contextParts, "\nRecent related changes:\n")
@@ -78,11 +82,7 @@ var hookPromptCmd = &cobra.Command{
 			return nil // Nothing found, don't inject
 		}
 
-		// Add a footer with navigation hints
-		contextParts = append(contextParts,
-			fmt.Sprintf("\n---\nHub: %s/ | Commands: /fix, /feature, /investigate, /review-pr | Search: ohara serve (MCP)", hubDirName))
-
-		// Output Claude Code UserPromptSubmit response
+		// Output Claude Code UserPromptSubmit response (no footer — moved to CLAUDE.md)
 		output := map[string]interface{}{
 			"hookSpecificOutput": map[string]interface{}{
 				"hookEventName":     "UserPromptSubmit",
@@ -94,6 +94,43 @@ var hookPromptCmd = &cobra.Command{
 		fmt.Print(string(data))
 		return nil
 	},
+}
+
+// boostByIntent adds Diataxis-type-specific terms based on query intent
+func boostByIntent(prompt string, keywords []string) []string {
+	lower := strings.ToLower(prompt)
+
+	// Detect intent and add boosting terms
+	if strings.Contains(lower, "how do i") || strings.Contains(lower, "how to") || strings.Contains(lower, "steps to") {
+		keywords = append(keywords, "guides")
+	} else if strings.Contains(lower, "what is") || strings.Contains(lower, "what does") || strings.Contains(lower, "api") || strings.Contains(lower, "config") {
+		keywords = append(keywords, "reference")
+	} else if strings.Contains(lower, "why") || strings.Contains(lower, "architecture") || strings.Contains(lower, "design") {
+		keywords = append(keywords, "explanation")
+	} else if strings.Contains(lower, "getting started") || strings.Contains(lower, "tutorial") || strings.Contains(lower, "walkthrough") {
+		keywords = append(keywords, "tutorials")
+	}
+
+	return keywords
+}
+
+// loadInjectedPaths reads the session-level dedup tracker
+func loadInjectedPaths() map[string]bool {
+	injected := map[string]bool{}
+	trackerPath := filepath.Join(os.TempDir(), fmt.Sprintf(".ohara-injected-%d.json", os.Getppid()))
+	data, err := os.ReadFile(trackerPath)
+	if err != nil {
+		return injected
+	}
+	json.Unmarshal(data, &injected)
+	return injected
+}
+
+// saveInjectedPaths persists injected doc paths for dedup across prompts
+func saveInjectedPaths(injected map[string]bool) {
+	trackerPath := filepath.Join(os.TempDir(), fmt.Sprintf(".ohara-injected-%d.json", os.Getppid()))
+	data, _ := json.Marshal(injected)
+	os.WriteFile(trackerPath, data, 0644)
 }
 
 // extractKeywords pulls meaningful search terms from a prompt
@@ -137,8 +174,8 @@ func extractKeywords(prompt string) []string {
 	return keywords
 }
 
-// searchHub greps markdown files in the hub for keyword matches
-func searchHub(hubRoot string, keywords []string) []string {
+// searchHub greps markdown files in the hub for keyword matches, excluding already-injected paths
+func searchHub(hubRoot string, keywords []string, exclude map[string]bool) []string {
 	var results []string
 	seen := map[string]bool{}
 
@@ -168,6 +205,12 @@ func searchHub(hubRoot string, keywords []string) []string {
 			strings.Contains(f, ".scratch") ||
 			strings.Contains(f, ".cache") ||
 			strings.Contains(f, "CHANGELOG") { // Changelogs searched separately
+			continue
+		}
+
+		rel := f
+		// Skip already-injected docs this session
+		if exclude[rel] {
 			continue
 		}
 
@@ -203,17 +246,21 @@ func searchHub(hubRoot string, keywords []string) []string {
 		limit = len(scored)
 	}
 
+	// Track newly injected paths for dedup
+	newInjected := loadInjectedPaths()
+
 	for _, sf := range scored[:limit] {
 		rel, _ := filepath.Rel(hubRoot, sf.path)
 		if seen[rel] {
 			continue
 		}
 		seen[rel] = true
+		newInjected[rel] = true
 
 		title := extractTitle(sf.path)
 		content, _ := os.ReadFile(sf.path)
 
-		// Extract the section: frontmatter-stripped, first 500 chars
+		// Extract the section: frontmatter-stripped, first 300 chars
 		text := string(content)
 		if strings.HasPrefix(text, "---") {
 			if idx := strings.Index(text[3:], "---"); idx >= 0 {
@@ -224,19 +271,22 @@ func searchHub(hubRoot string, keywords []string) []string {
 		// Find the Diataxis type from path
 		dType := inferTypeFromPath(rel)
 
-		// Trim to ~500 chars at a paragraph boundary
-		if len(text) > 500 {
-			cutoff := strings.Index(text[300:], "\n\n")
+		// Trim to ~300 chars at a paragraph boundary
+		if len(text) > 300 {
+			cutoff := strings.Index(text[200:], "\n\n")
 			if cutoff > 0 {
-				text = text[:300+cutoff]
+				text = text[:200+cutoff]
 			} else {
-				text = text[:500]
+				text = text[:300]
 			}
 			text += "\n..."
 		}
 
 		results = append(results, fmt.Sprintf("### %s (%s)\n_Source: %s_\n\n%s\n", title, dType, rel, text))
 	}
+
+	// Save injected paths for future dedup
+	saveInjectedPaths(newInjected)
 
 	return results
 }
@@ -536,7 +586,489 @@ var sessionSummaryCmd = &cobra.Command{
 }
 
 // --------------------------------------------------------------------------
-// Parent command: ohara hook
+// ohara session-start — SessionStart hook (one-time bootstrap + watchPaths)
+// --------------------------------------------------------------------------
+
+var sessionStartCmd = &cobra.Command{
+	Use:    "session-start",
+	Short:  "Hook: initialize session with hub context and watchPaths",
+	Hidden: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		hubRoot, err := FindHubRoot(".")
+		if err != nil {
+			return nil // Not in an ohara workspace
+		}
+
+		config, err := LoadHubConfig(hubRoot)
+		if err != nil {
+			return nil
+		}
+
+		hubDirName := filepath.Base(hubRoot)
+
+		// Collect all .md file paths in hub for watchPaths
+		watchPaths := collectAllMdPaths(hubRoot)
+
+		// Count docs
+		totalDocs := 0
+		for _, p := range watchPaths {
+			if !strings.Contains(p, ".scratch") && !strings.Contains(p, ".ohara-prompts") {
+				totalDocs++
+			}
+		}
+
+		// Build brief context (injected once at session start)
+		var context strings.Builder
+		context.WriteString(fmt.Sprintf("Ohara hub: %s/ | %d services | %d docs tracked\n",
+			hubDirName, len(config.Repos), totalDocs))
+
+		// Read llms.txt if it exists for a quick index
+		llmsPath := filepath.Join(hubRoot, "llms.txt")
+		if data, err := os.ReadFile(llmsPath); err == nil {
+			// Include just the first 1500 chars of llms.txt as overview
+			text := string(data)
+			if len(text) > 1500 {
+				text = text[:1500] + "\n..."
+			}
+			context.WriteString("\nService index (from llms.txt):\n")
+			context.WriteString(text)
+		}
+
+		// Clean stale session files from previous sessions
+		cleanStaleSessionFiles()
+
+		// Output SessionStart response with watchPaths
+		output := map[string]interface{}{
+			"hookSpecificOutput": map[string]interface{}{
+				"hookEventName":     "SessionStart",
+				"additionalContext": context.String(),
+				"watchPaths":        watchPaths,
+			},
+		}
+
+		data, _ := json.Marshal(output)
+		fmt.Print(string(data))
+		return nil
+	},
+}
+
+// collectAllMdPaths walks the hub and returns absolute paths to all .md files
+func collectAllMdPaths(hubRoot string) []string {
+	var paths []string
+	filepath.Walk(hubRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		// Skip hidden dirs except .ohara-playbooks
+		if info.IsDir() {
+			base := filepath.Base(path)
+			if strings.HasPrefix(base, ".") && base != ".ohara-playbooks" && path != hubRoot {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(path, ".md") {
+			absPath, _ := filepath.Abs(path)
+			paths = append(paths, absPath)
+		}
+		return nil
+	})
+	return paths
+}
+
+// cleanStaleSessionFiles removes temp files from previous sessions
+func cleanStaleSessionFiles() {
+	tmpDir := os.TempDir()
+	entries, _ := os.ReadDir(tmpDir)
+	myPpid := fmt.Sprintf("-%d-", os.Getppid())
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".ohara-gate-") && !strings.Contains(name, myPpid) {
+			os.Remove(filepath.Join(tmpDir, name))
+		}
+		if strings.HasPrefix(name, ".ohara-injected-") && !strings.Contains(name, myPpid) {
+			os.Remove(filepath.Join(tmpDir, name))
+		}
+	}
+}
+
+// --------------------------------------------------------------------------
+// ohara file-changed — FileChanged hook (auto-rebuild llms.txt)
+// --------------------------------------------------------------------------
+
+var fileChangedCmd = &cobra.Command{
+	Use:    "file-changed",
+	Short:  "Hook: auto-rebuild llms.txt when hub docs change",
+	Hidden: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var input struct {
+			FilePath string `json:"file_path"`
+		}
+		if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
+			return nil
+		}
+
+		if !strings.HasSuffix(input.FilePath, ".md") {
+			return nil
+		}
+
+		hubRoot, err := FindHubRoot(".")
+		if err != nil {
+			return nil
+		}
+
+		config, err := LoadHubConfig(hubRoot)
+		if err != nil {
+			return nil
+		}
+
+		// Check if the changed file is inside the hub
+		absChanged, _ := filepath.Abs(input.FilePath)
+		absHub, _ := filepath.Abs(hubRoot)
+		if !strings.HasPrefix(absChanged, absHub) {
+			return nil
+		}
+
+		// Rebuild llms.txt silently
+		buildLlmsTxt(hubRoot, config)
+		fmt.Fprintf(os.Stderr, "llms.txt rebuilt (file changed: %s)\n", filepath.Base(input.FilePath))
+
+		return nil
+	},
+}
+
+// --------------------------------------------------------------------------
+// ohara subagent-start — SubagentStart hook (role-specific context injection)
+// --------------------------------------------------------------------------
+
+var subagentStartCmd = &cobra.Command{
+	Use:    "subagent-start",
+	Short:  "Hook: inject role-specific context when subagent spawns",
+	Hidden: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var input struct {
+			AgentType string `json:"agent_type"`
+		}
+		if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
+			return nil
+		}
+
+		// Only inject for ohara agents
+		if !strings.HasPrefix(input.AgentType, "ohara-") {
+			return nil
+		}
+
+		hubRoot, err := FindHubRoot(".")
+		if err != nil {
+			return nil
+		}
+
+		config, err := LoadHubConfig(hubRoot)
+		if err != nil {
+			return nil
+		}
+
+		context := getAgentContext(hubRoot, config, input.AgentType)
+		if context == "" {
+			return nil
+		}
+
+		output := map[string]interface{}{
+			"hookSpecificOutput": map[string]interface{}{
+				"hookEventName":     "SubagentStart",
+				"additionalContext": context,
+			},
+		}
+
+		data, _ := json.Marshal(output)
+		fmt.Print(string(data))
+		return nil
+	},
+}
+
+// getAgentContext returns role-specific context for an ohara agent
+func getAgentContext(hubRoot string, config *HubConfig, agentType string) string {
+	hubDirName := filepath.Base(hubRoot)
+	var sb strings.Builder
+
+	switch agentType {
+	case "ohara-writer":
+		sb.WriteString(fmt.Sprintf("Hub: %s/ | Writing docs for %d services\n\n", hubDirName, len(config.Repos)))
+
+		// List available .ohara-prompts
+		promptsDir := filepath.Join(hubRoot, ".ohara-prompts")
+		if entries, err := os.ReadDir(promptsDir); err == nil && len(entries) > 0 {
+			sb.WriteString("Available prompts (.ohara-prompts/):\n")
+			for _, e := range entries {
+				if strings.HasSuffix(e.Name(), ".prompt.md") {
+					sb.WriteString(fmt.Sprintf("  - %s\n", e.Name()))
+				}
+			}
+			sb.WriteString("\nRead these prompts FIRST before writing any doc.\n")
+		}
+
+		// List services with their doc status
+		for _, repo := range config.Repos {
+			docsDir := filepath.Join(hubRoot, repo.Name)
+			docCount := 0
+			filepath.Walk(docsDir, func(path string, info os.FileInfo, err error) error {
+				if err == nil && !info.IsDir() && strings.HasSuffix(path, ".md") {
+					docCount++
+				}
+				return nil
+			})
+			sb.WriteString(fmt.Sprintf("\nService %s: %d docs, code at %s\n", repo.Name, docCount, repo.Path))
+		}
+
+	case "ohara-reviewer":
+		sb.WriteString(fmt.Sprintf("Hub: %s/ | Reviewing docs for accuracy\n\n", hubDirName))
+
+		// Show recently changed docs (git diff)
+		gitDiff := exec.Command("git", "diff", "--name-only", "HEAD~5", "--", "*.md")
+		gitDiff.Dir = hubRoot
+		if diffOut, err := gitDiff.Output(); err == nil && len(diffOut) > 0 {
+			sb.WriteString("Recently changed docs:\n")
+			for _, line := range strings.Split(strings.TrimSpace(string(diffOut)), "\n") {
+				if line != "" {
+					sb.WriteString(fmt.Sprintf("  - %s\n", line))
+				}
+			}
+			sb.WriteString("\nPrioritize reviewing these files.\n")
+		}
+
+	case "ohara-researcher":
+		sb.WriteString(fmt.Sprintf("Hub: %s/ | Searching docs\n\n", hubDirName))
+
+		// Inject full llms.txt for fast lookup
+		llmsPath := filepath.Join(hubRoot, "llms.txt")
+		if data, err := os.ReadFile(llmsPath); err == nil {
+			text := string(data)
+			if len(text) > 3000 {
+				text = text[:3000] + "\n..."
+			}
+			sb.WriteString("Full doc index:\n")
+			sb.WriteString(text)
+		}
+
+	case "ohara-watcher":
+		sb.WriteString(fmt.Sprintf("Hub: %s/ | Checking staleness\n\n", hubDirName))
+
+		// List services with last commit dates
+		for _, repo := range config.Repos {
+			codePath := ResolveRepoPath(hubRoot, repo)
+			if codePath == "" {
+				continue
+			}
+			// Get last commit date for the service code
+			gitLog := exec.Command("git", "log", "-1", "--format=%cr", "--", ".")
+			gitLog.Dir = codePath
+			if out, err := gitLog.Output(); err == nil {
+				sb.WriteString(fmt.Sprintf("  %s: last code change %s", repo.Name, strings.TrimSpace(string(out))))
+			}
+
+			// Get last doc change
+			docsDir := filepath.Join(hubRoot, repo.Name)
+			gitLogDocs := exec.Command("git", "log", "-1", "--format=%cr", "--", ".")
+			gitLogDocs.Dir = docsDir
+			if out, err := gitLogDocs.Output(); err == nil {
+				sb.WriteString(fmt.Sprintf(", last doc change %s\n", strings.TrimSpace(string(out))))
+			} else {
+				sb.WriteString(", no docs yet\n")
+			}
+		}
+
+	case "ohara-orchestrator":
+		sb.WriteString(fmt.Sprintf("Hub: %s/ | Executing playbook\n\n", hubDirName))
+
+		// Check for active tasks
+		tasksDir := filepath.Join(hubRoot, ".scratch", "tasks")
+		if entries, err := os.ReadDir(tasksDir); err == nil {
+			activeTasks := []string{}
+			for _, e := range entries {
+				if e.IsDir() {
+					activeTasks = append(activeTasks, e.Name())
+				}
+			}
+			if len(activeTasks) > 0 {
+				sb.WriteString("Active tasks:\n")
+				for _, t := range activeTasks {
+					sb.WriteString(fmt.Sprintf("  - %s\n", t))
+					// Read context.md if it exists
+					ctxPath := filepath.Join(tasksDir, t, "context.md")
+					if data, err := os.ReadFile(ctxPath); err == nil {
+						text := string(data)
+						if len(text) > 500 {
+							text = text[:500] + "\n..."
+						}
+						sb.WriteString(text + "\n")
+					}
+				}
+			}
+		}
+
+		// List available services
+		sb.WriteString("\nTracked services:\n")
+		for _, repo := range config.Repos {
+			sb.WriteString(fmt.Sprintf("  - %s (code: %s, docs: %s/%s/)\n", repo.Name, repo.Path, hubDirName, repo.Name))
+		}
+	}
+
+	return sb.String()
+}
+
+// --------------------------------------------------------------------------
+// ohara pre-compact — PreCompact hook (preserve essential context)
+// --------------------------------------------------------------------------
+
+var preCompactCmd = &cobra.Command{
+	Use:    "pre-compact",
+	Short:  "Hook: preserve critical context before conversation compression",
+	Hidden: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		hubRoot, err := FindHubRoot(".")
+		if err != nil {
+			return nil
+		}
+
+		config, err := LoadHubConfig(hubRoot)
+		if err != nil {
+			return nil
+		}
+
+		summary := buildCompactionSummary(hubRoot, config)
+		if summary == "" {
+			return nil
+		}
+
+		output := map[string]interface{}{
+			"hookSpecificOutput": map[string]interface{}{
+				"hookEventName":     "PreCompact",
+				"additionalContext": summary,
+			},
+		}
+
+		data, _ := json.Marshal(output)
+		fmt.Print(string(data))
+		return nil
+	},
+}
+
+// buildCompactionSummary creates essential context that should survive compression
+func buildCompactionSummary(hubRoot string, config *HubConfig) string {
+	hubDirName := filepath.Base(hubRoot)
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("=== Ohara Hub Context (preserved across compaction) ===\n"))
+	sb.WriteString(fmt.Sprintf("Hub: %s/ | %d services tracked\n", hubDirName, len(config.Repos)))
+
+	// Services edited this session
+	editedServices := []string{}
+	for _, repo := range config.Repos {
+		sessionFile := filepath.Join(os.TempDir(), fmt.Sprintf(".ohara-gate-%d-%s", os.Getppid(), repo.Name))
+		if _, err := os.Stat(sessionFile); err == nil {
+			editedServices = append(editedServices, repo.Name)
+		}
+	}
+	if len(editedServices) > 0 {
+		sb.WriteString(fmt.Sprintf("Services edited this session: %s\n", strings.Join(editedServices, ", ")))
+	}
+
+	// Active task
+	tasksDir := filepath.Join(hubRoot, ".scratch", "tasks")
+	if entries, err := os.ReadDir(tasksDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				sb.WriteString(fmt.Sprintf("Active task: %s\n", e.Name()))
+				// Include task context summary
+				ctxPath := filepath.Join(tasksDir, e.Name(), "context.md")
+				if data, err := os.ReadFile(ctxPath); err == nil {
+					text := string(data)
+					if len(text) > 300 {
+						text = text[:300] + "..."
+					}
+					sb.WriteString(text + "\n")
+				}
+			}
+		}
+	}
+
+	// Service list for reference
+	sb.WriteString("\nTracked services:\n")
+	for _, repo := range config.Repos {
+		sb.WriteString(fmt.Sprintf("  - %s (code: %s)\n", repo.Name, repo.Path))
+	}
+
+	sb.WriteString("\nCommands: /fix, /feature, /investigate, /review-pr, /validate-docs, /create-docs-pr\n")
+	sb.WriteString(fmt.Sprintf("MCP tools: search_docs, read_doc, write_doc, validate, list_docs\n"))
+
+	return sb.String()
+}
+
+// --------------------------------------------------------------------------
+// ohara status-line — StatusLine hook (Claude Code status bar)
+// --------------------------------------------------------------------------
+
+var statusLineCmd = &cobra.Command{
+	Use:    "status-line",
+	Short:  "Hook: provide status bar content for Claude Code",
+	Hidden: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		hubRoot, err := FindHubRoot(".")
+		if err != nil {
+			return nil
+		}
+
+		config, err := LoadHubConfig(hubRoot)
+		if err != nil {
+			return nil
+		}
+
+		// Count total docs
+		totalDocs := 0
+		stubDocs := 0
+		for _, repo := range config.Repos {
+			docsDir := filepath.Join(hubRoot, repo.Name)
+			filepath.Walk(docsDir, func(path string, info os.FileInfo, err error) error {
+				if err == nil && !info.IsDir() && strings.HasSuffix(path, ".md") && filepath.Base(path) != "CHANGELOG.md" && filepath.Base(path) != "README.md" {
+					totalDocs++
+					if isStubDoc(path) {
+						stubDocs++
+					}
+				}
+				return nil
+			})
+		}
+
+		completeDocs := totalDocs - stubDocs
+
+		// Count active tasks
+		activeTasks := 0
+		tasksDir := filepath.Join(hubRoot, ".scratch", "tasks")
+		if entries, err := os.ReadDir(tasksDir); err == nil {
+			for _, e := range entries {
+				if e.IsDir() {
+					activeTasks++
+				}
+			}
+		}
+
+		// Build status line
+		parts := []string{
+			fmt.Sprintf("ohara: %d services", len(config.Repos)),
+			fmt.Sprintf("%d/%d docs", completeDocs, totalDocs),
+		}
+
+		if activeTasks > 0 {
+			parts = append(parts, fmt.Sprintf("%d active tasks", activeTasks))
+		}
+
+		fmt.Print(strings.Join(parts, " | "))
+		return nil
+	},
+}
+
+// --------------------------------------------------------------------------
+// init — register all hook commands
 // --------------------------------------------------------------------------
 
 func init() {
@@ -544,4 +1076,9 @@ func init() {
 	rootCmd.AddCommand(gateCmd)
 	rootCmd.AddCommand(watchHookCmd)
 	rootCmd.AddCommand(sessionSummaryCmd)
+	rootCmd.AddCommand(sessionStartCmd)
+	rootCmd.AddCommand(fileChangedCmd)
+	rootCmd.AddCommand(subagentStartCmd)
+	rootCmd.AddCommand(preCompactCmd)
+	rootCmd.AddCommand(statusLineCmd)
 }

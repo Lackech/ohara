@@ -96,7 +96,7 @@ or keep it local for your agents to read.`,
 		fmt.Printf("✓ Created %s/README.md\n", hubName)
 
 		// Create CLAUDE.md in the WORKSPACE root using shared builder
-		os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(buildClaudeMd(name, hubName)), 0644)
+		os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(buildClaudeMd(config, hubName)), 0644)
 		fmt.Printf("✓ Created CLAUDE.md (workspace root)\n")
 
 		// Create subagents + skills

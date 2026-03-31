@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -60,7 +61,7 @@ What is preserved:
 		createOharaAgentConfig(workDir, hubName)
 
 		// 2. Update CLAUDE.md
-		claudeMd := buildClaudeMd(config.Name, hubName)
+		claudeMd := buildClaudeMd(config, hubName)
 		os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(claudeMd), 0644)
 		fmt.Printf("✓ Updated CLAUDE.md\n")
 
@@ -95,11 +96,21 @@ func writeSettingsJson(configDir, hubName string) {
 				"cwd":     hubName,
 			},
 		},
+		"statusLine": map[string]interface{}{
+			"command": "ohara status-line",
+		},
 		"hooks": map[string]interface{}{
+			"SessionStart": []map[string]interface{}{
+				{
+					"hooks": []map[string]interface{}{
+						{"type": "command", "command": "ohara session-start", "statusMessage": "Loading ohara hub..."},
+					},
+				},
+			},
 			"UserPromptSubmit": []map[string]interface{}{
 				{
 					"hooks": []map[string]interface{}{
-						{"type": "command", "command": "ohara hook-prompt"},
+						{"type": "command", "command": "ohara hook-prompt", "statusMessage": "Searching docs..."},
 					},
 				},
 			},
@@ -115,7 +126,7 @@ func writeSettingsJson(configDir, hubName string) {
 				{
 					"matcher": "Bash",
 					"hooks": []map[string]interface{}{
-						{"type": "command", "command": "ohara watch-hook"},
+						{"type": "command", "command": "ohara watch-hook", "if": "Bash(git *)|Bash(gh pr *)"},
 					},
 				},
 			},
@@ -126,36 +137,94 @@ func writeSettingsJson(configDir, hubName string) {
 					},
 				},
 			},
+			"FileChanged": []map[string]interface{}{
+				{
+					"hooks": []map[string]interface{}{
+						{"type": "command", "command": "ohara file-changed", "statusMessage": "Rebuilding docs index..."},
+					},
+				},
+			},
+			"SubagentStart": []map[string]interface{}{
+				{
+					"hooks": []map[string]interface{}{
+						{"type": "command", "command": "ohara subagent-start"},
+					},
+				},
+			},
+			"PreCompact": []map[string]interface{}{
+				{
+					"hooks": []map[string]interface{}{
+						{"type": "command", "command": "ohara pre-compact", "statusMessage": "Preserving hub context..."},
+					},
+				},
+			},
+			"TeammateIdle": []map[string]interface{}{
+				{
+					"hooks": []map[string]interface{}{
+						{"type": "command", "command": "ohara teammate-idle", "statusMessage": "Checking team progress..."},
+					},
+				},
+			},
 		},
 	}
 	data, _ := json.MarshalIndent(settings, "", "  ")
 	os.WriteFile(filepath.Join(configDir, "settings.json"), data, 0644)
 }
 
-func buildClaudeMd(name, hubName string) string {
-	return "# " + name + "\n\n" +
-		"Doc hub: `" + hubName + "/` — read `" + hubName + "/llms.txt` for index. Ohara v" + Version + ".\n\n" +
-		"## Team\n\n" +
-		"| Agent | Strength | When to use |\n" +
-		"|-------|----------|-------------|\n" +
-		"| ohara-researcher | Fast doc lookup | Before touching unfamiliar service |\n" +
-		"| ohara-writer | Doc generation from code | After code changes |\n" +
-		"| ohara-reviewer | Accuracy check | After doc changes |\n" +
-		"| ohara-watcher | Staleness detection | After git pull (auto via hook) |\n" +
-		"| ohara-orchestrator | Playbook execution | Spawned by /fix, /feature, etc. |\n\n" +
-		"## Commands\n\n" +
-		"| Command | What it does |\n" +
-		"|---------|-------------|\n" +
-		"| `/fix <desc>` | Bug fix: investigate → implement → test → document |\n" +
-		"| `/feature <desc>` | New feature: plan → parallel implement → integrate → docs |\n" +
-		"| `/investigate <desc>` | Research: competing hypotheses → converge |\n" +
-		"| `/review-pr <#>` | PR review: correctness + security + quality → synthesis |\n" +
-		"| `/validate-docs` | Check doc structure and coverage |\n" +
-		"| `/create-docs-pr <desc>` | Create a PR with doc changes |\n\n" +
-		"## Rules\n\n" +
-		"1. Never edit a service you haven't read docs for\n" +
-		"2. Multi-step work → use /fix, /feature, /investigate, or /review-pr\n" +
-		"3. After code changes, ask user if docs need updating\n"
+func buildClaudeMd(config *HubConfig, hubName string) string {
+	var sb strings.Builder
+
+	sb.WriteString("# " + config.Name + "\n\n")
+	sb.WriteString("Doc hub: `" + hubName + "/` — read `" + hubName + "/llms.txt` for index. Ohara v" + Version + ".\n\n")
+
+	// Diataxis overview (Layer A: static, cached by prompt cache)
+	sb.WriteString("## Diataxis Structure\n\n")
+	sb.WriteString("All docs follow [Diataxis](https://diataxis.fr/) — four complementary types:\n\n")
+	sb.WriteString("| Type | Purpose | Directory | Query patterns |\n")
+	sb.WriteString("|------|---------|-----------|----------------|\n")
+	sb.WriteString("| Tutorial | Learning-oriented walkthrough | `tutorials/` | \"getting started\", \"walkthrough\" |\n")
+	sb.WriteString("| Guide | Task-oriented how-to | `guides/` | \"how do I\", \"how to\" |\n")
+	sb.WriteString("| Reference | Exhaustive facts, API specs | `reference/` | \"what is\", \"API\", \"config\" |\n")
+	sb.WriteString("| Explanation | Design rationale, architecture | `explanation/` | \"why\", \"architecture\" |\n\n")
+
+	// Services list
+	if len(config.Repos) > 0 {
+		sb.WriteString("## Tracked Services\n\n")
+		for _, repo := range config.Repos {
+			sb.WriteString(fmt.Sprintf("- **%s** — docs: `%s/%s/`, code: `%s`\n", repo.Name, hubName, repo.Name, repo.Path))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Team table
+	sb.WriteString("## Team\n\n")
+	sb.WriteString("| Agent | Strength | When to use |\n")
+	sb.WriteString("|-------|----------|-------------|\n")
+	sb.WriteString("| ohara-researcher | Fast doc lookup | Before touching unfamiliar service |\n")
+	sb.WriteString("| ohara-writer | Doc generation from code | After code changes |\n")
+	sb.WriteString("| ohara-reviewer | Accuracy check | After doc changes |\n")
+	sb.WriteString("| ohara-watcher | Staleness detection | After git pull (auto via hook) |\n")
+	sb.WriteString("| ohara-orchestrator | Playbook execution | Spawned by /fix, /feature, etc. |\n\n")
+
+	// Commands table
+	sb.WriteString("## Commands\n\n")
+	sb.WriteString("| Command | What it does |\n")
+	sb.WriteString("|---------|-------------|\n")
+	sb.WriteString("| `/fix <desc>` | Bug fix: investigate → implement → test → document |\n")
+	sb.WriteString("| `/feature <desc>` | New feature: plan → parallel implement → integrate → docs |\n")
+	sb.WriteString("| `/investigate <desc>` | Research: competing hypotheses → converge |\n")
+	sb.WriteString("| `/review-pr <#>` | PR review: correctness + security + quality → synthesis |\n")
+	sb.WriteString("| `/validate-docs` | Check doc structure and coverage |\n")
+	sb.WriteString("| `/create-docs-pr <desc>` | Create a PR with doc changes |\n\n")
+
+	// Rules
+	sb.WriteString("## Rules\n\n")
+	sb.WriteString("1. Never edit a service you haven't read docs for — check `" + hubName + "/<service>/`\n")
+	sb.WriteString("2. Multi-step work → use /fix, /feature, /investigate, or /review-pr\n")
+	sb.WriteString("3. After code changes, ask user if docs need updating\n")
+	sb.WriteString("4. MCP tools: search_docs, read_doc, write_doc, validate, list_docs, create_pr, changelog\n")
+
+	return sb.String()
 }
 
 func updatePlaybooks(hubRoot string) {
