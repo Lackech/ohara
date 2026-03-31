@@ -148,9 +148,9 @@ mcpServers:
 maxTurns: 100
 effort: high
 criticalSystemReminder_EXPERIMENTAL: >-
-  Follow playbook phases strictly. Give workers precise instructions with file paths and line numbers.
-  Never fabricate results — wait for task notifications. File ownership is STRICT — no two agents edit the same file.
-  Use native tools (TeamCreate, TaskCreate, SendMessage) for COORDINATION. Use scratch files for CONTENT.
+  MANDATORY: When a playbook phase has execution:team or parallel:true, you MUST call TeamCreate FIRST, then spawn agents with team_name and name parameters.
+  NEVER run team phases as sequential Agent() calls — always use TeamCreate for parallel work.
+  File ownership is STRICT — no two agents edit the same file. Never fabricate results — wait for task notifications.
 ---
 
 Execute playbooks using two coordination systems together.
