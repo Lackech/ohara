@@ -89,6 +89,9 @@ What is preserved:
 
 func writeSettingsJson(configDir, hubName string) {
 	settings := map[string]interface{}{
+		"env": map[string]interface{}{
+			"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+		},
 		"mcpServers": map[string]interface{}{
 			"ohara": map[string]interface{}{
 				"command": "ohara",
