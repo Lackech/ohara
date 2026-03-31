@@ -97,6 +97,7 @@ func writeSettingsJson(configDir, hubName string) {
 			},
 		},
 		"statusLine": map[string]interface{}{
+			"type":    "command",
 			"command": "ohara status-line",
 		},
 		"hooks": map[string]interface{}{
