@@ -96,6 +96,13 @@ func writeSettingsJson(configDir, hubName string) {
 			},
 		},
 		"hooks": map[string]interface{}{
+			"UserPromptSubmit": []map[string]interface{}{
+				{
+					"hooks": []map[string]interface{}{
+						{"type": "command", "command": "ohara hook-prompt"},
+					},
+				},
+			},
 			"PreToolUse": []map[string]interface{}{
 				{
 					"matcher": "Edit|Write",
