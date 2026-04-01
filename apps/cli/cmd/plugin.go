@@ -366,7 +366,6 @@ name: fix
 description: Fix a bug with a coordinated agent team
 argument-hint: <description of the bug>
 disable-model-invocation: true
-context: fork
 agent: ohara-orchestrator
 model: opus
 when-to-use: When the user describes a bug, error, or unexpected behavior that needs fixing
@@ -386,7 +385,6 @@ name: feature
 description: Build a new feature with a coordinated agent team
 argument-hint: <description of the feature>
 disable-model-invocation: true
-context: fork
 agent: ohara-orchestrator
 model: opus
 when-to-use: When the user wants to add new functionality or build something new
@@ -407,7 +405,6 @@ name: investigate
 description: Investigate a problem with competing hypotheses
 argument-hint: <what to investigate>
 disable-model-invocation: true
-context: fork
 agent: ohara-orchestrator
 model: opus
 when-to-use: When the user wants to research, understand, or diagnose a problem
@@ -427,7 +424,6 @@ name: review-pr
 description: Multi-perspective PR review
 argument-hint: <PR number or branch>
 disable-model-invocation: true
-context: fork
 agent: ohara-orchestrator
 model: opus
 when-to-use: When the user wants to review a pull request or code changes
